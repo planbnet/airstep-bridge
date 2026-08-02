@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>SparkBridge</string>
+  <key>CFBundleIdentifier</key><string>local.airstepbridge</string>
+  <key>CFBundleName</key><string>AIRSTEP Bridge</string>
+  <key>CFBundleDisplayName</key><string>AIRSTEP Bridge</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>Emulates a Spark amp so an AIRSTEP pedal can connect and its footswitches can be mapped to MIDI.</string>
+</dict>
+</plist>
