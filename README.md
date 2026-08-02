@@ -128,3 +128,17 @@ build.sh                           generate + build + optional install
 
 All five files are shared by both targets; the handful of platform differences are
 behind `#if os(iOS)`.
+
+## Icon
+
+Drawn programmatically with CoreGraphics rather than shipped as an opaque bitmap,
+so it stays reproducible and tweakable:
+
+```sh
+./Tools/makeicons.sh
+```
+
+That renders `Tools/makeicon.swift` and fills
+`Resources/Assets.xcassets/AppIcon.appiconset` (iOS full-bleed, macOS squircle with
+the inset Apple's grid expects). The PNGs are checked in, so a normal build does
+not need this step.

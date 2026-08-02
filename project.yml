@@ -9,6 +9,7 @@ options:
 settings:
   base:
     MARKETING_VERSION: "1.0"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
     DEVELOPMENT_TEAM: FXBVM5H5JH
@@ -18,7 +19,7 @@ targets:
   AirstepBridge-macOS:
     type: application
     platform: macOS
-    sources: [Sources/Shared]
+    sources: [Sources/Shared, Resources/Assets.xcassets]
     settings:
       base:
         PRODUCT_NAME: AIRSTEP Bridge
@@ -38,7 +39,7 @@ targets:
   AirstepBridge-iOS:
     type: application
     platform: iOS
-    sources: [Sources/Shared]
+    sources: [Sources/Shared, Resources/Assets.xcassets]
     settings:
       base:
         PRODUCT_NAME: AIRSTEP Bridge
