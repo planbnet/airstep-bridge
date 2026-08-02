@@ -44,6 +44,17 @@ Per switch you can configure message type (Note / CC / Program Change), number,
 channel, and whether CC should follow the pedal's on/off state. Settings persist in
 `UserDefaults`.
 
+### Switch E as a state indicator
+
+E is the pedal's drive toggle, so unlike A–D it carries an on/off state that the
+pedal tracks itself and shows on its footswitch LED. Enabling **"Getrennte
+Nachrichten für an/aus"** sends "on" and "off" as two different message numbers,
+which lets a looper bind them to separate actions — Play on one, Pause on the
+other. The LED on the pedal then doubles as a playback indicator.
+
+Caveat: the pedal's state is its own. If you pause playback from the app's UI
+instead of the pedal, the LED will be out of step until the next press.
+
 ### Background operation on iOS
 
 The app declares the `bluetooth-peripheral` and `audio` background modes, and an

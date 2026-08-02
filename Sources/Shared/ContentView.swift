@@ -121,17 +121,19 @@ struct ContentView: View {
                     let c = settings.config(s)
                     PadView(label: s,
                             lit: bridge.flash == s,
-                            subtitle: c.enabled ? "\(c.kind.rawValue) \(c.number)" : "aus",
+                            subtitle: subtitle(for: s, c),
                             dimmed: !c.enabled,
                             compact: compact)
                 }
             }
             HStack(spacing: 8) {
-                Text("Drive").font(.caption).foregroundStyle(.secondary)
+                Text("Schalter E").font(.caption).foregroundStyle(.secondary)
                 Circle()
                     .fill(bridge.driveOn ? Color.green : Color.gray.opacity(0.3))
                     .frame(width: 9, height: 9)
                 Text(bridge.driveOn ? "an" : "aus").font(.caption).foregroundStyle(.secondary)
+                Text("— entspricht der LED am Pedal")
+                    .font(.caption2).foregroundStyle(.tertiary)
             }
         }
         .padding(.vertical, 18)
@@ -177,10 +179,22 @@ struct ContentView: View {
                     Picker("Typ", selection: b.kind) {
                         ForEach(MessageKind.allCases) { Text($0.rawValue).tag($0) }
                     }
-                    Stepper("Nummer \(settings.config(s).number)", value: b.number, in: 0...127)
+                    Stepper(settings.config(s).splitToggle
+                            ? "Nummer „an\" \(settings.config(s).number)"
+                            : "Nummer \(settings.config(s).number)",
+                            value: b.number, in: 0...127)
                     Stepper("Kanal \(settings.config(s).channel)", value: b.channel, in: 1...16)
-                    if settings.config(s).kind == .cc {
+                    if settings.config(s).kind == .cc && !settings.config(s).splitToggle {
                         Toggle("127/0 nach An-Aus-Zustand", isOn: b.followToggle)
+                    }
+                    if s == "E" {
+                        Toggle("Getrennte Nachrichten für an/aus", isOn: b.splitToggle)
+                        if settings.config(s).splitToggle {
+                            Stepper("Nummer „aus\" \(settings.config(s).offNumber)",
+                                    value: b.offNumber, in: 0...127)
+                            Text("E hält am Pedal einen eigenen An-Aus-Zustand und zeigt ihn auf der LED. Getrennt gesendet kannst du z. B. Play und Pause binden — die LED wird dann zur Statusanzeige.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -202,6 +216,12 @@ struct ContentView: View {
         #if os(macOS)
         .formStyle(.grouped)
         #endif
+    }
+
+    private func subtitle(for s: String, _ c: SwitchConfig) -> String {
+        guard c.enabled else { return "aus" }
+        if c.splitToggle { return "\(c.kind.rawValue) \(c.number)/\(c.offNumber)" }
+        return "\(c.kind.rawValue) \(c.number)"
     }
 
     private func time(_ d: Date) -> String {

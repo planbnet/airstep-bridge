@@ -129,19 +129,28 @@ final class Bridge: NSObject, ObservableObject {
         let c = settings.config(sw)
         guard c.enabled else { return "aus" }
         let ch = UInt8(max(1, min(16, c.channel)) - 1)
-        let n = UInt8(max(0, min(127, c.number)))
+
+        // With splitToggle, "off" uses its own message number so a looper can bind
+        // on and off to separate actions. Falls back to the single number when the
+        // pedal did not report a state.
+        let isOff = c.splitToggle && (toggleOn == false)
+        let n = UInt8(max(0, min(127, isOff ? c.offNumber : c.number)))
+        let tag = c.splitToggle ? (isOff ? " (aus)" : " (an)") : ""
+
         switch c.kind {
         case .note:
             raw([0x90 | ch, n, 0x7F])
             raw([0x80 | ch, n, 0x00])
-            return "Note \(n) · Ch \(ch + 1)"
+            return "Note \(n) · Ch \(ch + 1)\(tag)"
         case .cc:
-            let v: UInt8 = c.followToggle ? ((toggleOn ?? true) ? 127 : 0) : 127
+            let v: UInt8 = (c.followToggle && !c.splitToggle)
+                ? ((toggleOn ?? true) ? 127 : 0)
+                : 127
             raw([0xB0 | ch, n, v])
-            return "CC \(n) = \(v) · Ch \(ch + 1)"
+            return "CC \(n) = \(v) · Ch \(ch + 1)\(tag)"
         case .program:
             raw([0xC0 | ch, n])
-            return "Program \(n) · Ch \(ch + 1)"
+            return "Program \(n) · Ch \(ch + 1)\(tag)"
         }
     }
 

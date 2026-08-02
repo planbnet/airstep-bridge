@@ -14,6 +14,13 @@ struct SwitchConfig: Codable, Equatable {
     var channel: Int = 1          // 1...16
     /// CC only: send 127/0 following the pedal's toggle state instead of 127 each time.
     var followToggle = false
+    /// Switch E only. The pedal keeps its own on/off state for the drive toggle and
+    /// shows it on the footswitch LED. With this on, "on" and "off" are sent as two
+    /// distinct messages, so a looper can bind them to separate actions (Play /
+    /// Pause) and the pedal's LED becomes a status indicator.
+    var splitToggle = false
+    /// Message number used when the pedal reports "off". Only used with splitToggle.
+    var offNumber: Int = 65
 }
 
 final class Settings: ObservableObject {
