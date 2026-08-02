@@ -16,16 +16,22 @@ appear in macOS Bluetooth settings at all. Rather than fight that, this reverses
 the roles: the pedal keeps doing the one thing it does reliably, which is talking
 to a Spark amp, and we pretend to be the amp.
 
+Runs on **macOS, iPadOS and iOS** from one shared source set.
+
 ## Build
 
+Requires Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`). The `.xcodeproj` is generated, not checked in.
+
 ```sh
-./build.sh              # -> build/AIRSTEP Bridge.app
-./build.sh --install    # also copies to /Applications
+./build.sh              # generates the project, builds the Mac app
+./build.sh --install    # also copies it to /Applications
 ```
 
-No dependencies beyond the Xcode command line tools. The app is ad-hoc signed, so
-the first launch may need Right-click → Open, and macOS will ask for Bluetooth
-permission.
+**For iPhone/iPad:** run `./build.sh` (or just `xcodegen generate`), open
+`AirstepBridge.xcodeproj`, select the **AirstepBridge-iOS** scheme and your
+device, then Run. Adjust `DEVELOPMENT_TEAM` in `project.yml` if you sign with a
+different account.
 
 ## Usage
 
@@ -37,6 +43,23 @@ permission.
 Per switch you can configure message type (Note / CC / Program Change), number,
 channel, and whether CC should follow the pedal's on/off state. Settings persist in
 `UserDefaults`.
+
+### Background operation on iOS
+
+The app declares the `bluetooth-peripheral` and `audio` background modes, and an
+**established connection keeps delivering presses while the app is in the
+background** — so you can start it, let the pedal connect, then switch to your
+looper.
+
+One real limitation: **iOS strips backgrounded BLE advertising.** The local name is
+dropped and the service UUID moves to an overflow area that only Apple centrals
+read, so the AIRSTEP cannot *discover* the app while it is backgrounded. If the
+connection drops, bring the app to the foreground for the pedal to find it again.
+
+If iOS suspends the app anyway, enable **"Aktiv halten"** in the settings: it plays
+silence through an `AVAudioSession` and disables the idle timer, which keeps the
+process alive as an audio app. Off by default, since the Bluetooth background mode
+is usually sufficient.
 
 ## Protocol notes
 
@@ -94,8 +117,14 @@ mistaken for it.
 ## Layout
 
 ```
-Sources/SparkBridgeApp.swift   SwiftUI app, BLE peripheral, MIDI output
-Sources/decode.swift           Spark frame parsing and classification
-Resources/Info.plist           bundle metadata, Bluetooth usage description
-build.sh                       build and optional install
+project.yml                        XcodeGen spec, macOS + iOS targets
+Sources/Shared/AirstepBridgeApp.swift  @main entry point
+Sources/Shared/Bridge.swift        BLE peripheral, Spark handling, MIDI output
+Sources/Shared/decode.swift        Spark frame parsing and classification
+Sources/Shared/Settings.swift      per-switch config, persisted
+Sources/Shared/ContentView.swift   UI, adapts between macOS and iOS
+build.sh                           generate + build + optional install
 ```
+
+All five files are shared by both targets; the handful of platform differences are
+behind `#if os(iOS)`.

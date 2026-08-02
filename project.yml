@@ -1,0 +1,67 @@
+name: AirstepBridge
+options:
+  bundleIdPrefix: org.planbnet
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: FXBVM5H5JH
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  AirstepBridge-macOS:
+    type: application
+    platform: macOS
+    sources: [Sources/Shared]
+    settings:
+      base:
+        PRODUCT_NAME: AIRSTEP Bridge
+        PRODUCT_BUNDLE_IDENTIFIER: org.planbnet.airstepbridge
+        ENABLE_HARDENED_RUNTIME: YES
+    info:
+      path: build/macOS-Info.plist
+      properties:
+        CFBundleName: AIRSTEP Bridge
+        CFBundleDisplayName: AIRSTEP Bridge
+        NSHighResolutionCapable: true
+        LSMinimumSystemVersion: "14.0"
+        NSBluetoothAlwaysUsageDescription: >-
+          Emulates a Spark amp so an AIRSTEP pedal can connect and its footswitches
+          can be sent as MIDI.
+
+  AirstepBridge-iOS:
+    type: application
+    platform: iOS
+    sources: [Sources/Shared]
+    settings:
+      base:
+        PRODUCT_NAME: AIRSTEP Bridge
+        PRODUCT_BUNDLE_IDENTIFIER: org.planbnet.airstepbridge
+        TARGETED_DEVICE_FAMILY: "1,2"      # iPhone and iPad
+    info:
+      path: build/iOS-Info.plist
+      properties:
+        CFBundleName: AIRSTEP Bridge
+        CFBundleDisplayName: AIRSTEP Bridge
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - bluetooth-peripheral
+          - audio
+        NSBluetoothAlwaysUsageDescription: >-
+          Emulates a Spark amp so an AIRSTEP pedal can connect and its footswitches
+          can be sent as MIDI.
