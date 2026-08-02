@@ -28,18 +28,9 @@ final class Settings: ObservableObject {
 
     @Published var configs: [String: SwitchConfig] { didSet { save() } }
 
-    /// iOS only: play silence so the system keeps the app running when it is not
-    /// in the foreground. Off by default — the bluetooth-peripheral background
-    /// mode alone is usually enough.
-    @Published var keepAwake: Bool {
-        didSet { UserDefaults.standard.set(keepAwake, forKey: Self.keepAwakeKey) }
-    }
-
     private static let key = "airstep.bridge.configs"
-    private static let keepAwakeKey = "airstep.bridge.keepAwake"
 
     init() {
-        keepAwake = UserDefaults.standard.bool(forKey: Self.keepAwakeKey)
         if let data = UserDefaults.standard.data(forKey: Self.key),
            let decoded = try? JSONDecoder().decode([String: SwitchConfig].self, from: data) {
             configs = decoded

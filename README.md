@@ -68,9 +68,15 @@ Requires Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 ./build.sh --install    # also copies it to /Applications
 ```
 
-**For iPhone/iPad:** run `./build.sh` (or just `xcodegen generate`), open
-`AirstepBridge.xcodeproj`, select the **AirstepBridge-iOS** scheme and your device,
-then Run. Xcode will ask you to pick a signing team the first time.
+**For iPhone/iPad:**
+
+```sh
+DEVELOPMENT_TEAM=ABCDE12345 ./build.sh --ios
+```
+
+Or open `AirstepBridge.xcodeproj`, select the **AirstepBridge-iOS** scheme and your
+device, and Run — Xcode asks you to pick a signing team the first time. No team is
+hardcoded in the repo.
 
 ## Usage
 
@@ -95,21 +101,27 @@ the pedal then doubles as a playback indicator.
 Caveat: the state belongs to the pedal. Pause from the app's UI instead of the pedal
 and the LED will be out of step until the next press.
 
-### Background operation on iOS
+### Start / stop and background operation on iOS
 
-The app declares the `bluetooth-peripheral` and `audio` background modes, and an
-**established connection keeps delivering presses while the app is in the
-background** — start it, let the pedal connect, then switch to your looper.
+On iPhone and iPad the bridge has an explicit **Start / Stop** button; on the Mac it
+simply always runs, because macOS does not suspend it.
 
-One real limitation: **iOS strips backgrounded BLE advertising.** The local name is
-dropped and the service UUID moves to an overflow area only Apple centrals read, so
-the AIRSTEP cannot *discover* the app while it is backgrounded. If the connection
-drops, foreground the app so the pedal can find it again.
+While started, the app holds a silent `AVAudioSession` and disables the idle timer.
+That is what actually keeps it alive in the background — the `bluetooth-peripheral`
+background mode on its own is not enough, and iOS suspends the app after a few
+minutes, taking the pedal connection with it. Interruptions, route changes and
+engine reconfigurations are observed and the session is rebuilt, since any of those
+would otherwise silently end the keep-alive.
 
-If iOS suspends the app anyway, enable **"Aktiv halten"** in the settings: it plays
-silence through an `AVAudioSession` and disables the idle timer, keeping the process
-alive as an audio app. Off by default, since the Bluetooth background mode is
-usually enough.
+Stop releases all of it: advertising ends, services are removed, the audio session
+is deactivated and the screen may sleep again. Nothing runs in the background when
+you are done.
+
+One limitation remains: **iOS strips backgrounded BLE advertising.** The local name
+is dropped and the service UUID moves to an overflow area only Apple centrals read,
+so the AIRSTEP cannot *discover* the app while it is backgrounded. An established
+connection is unaffected — but if it does drop, foreground the app briefly so the
+pedal can find it again.
 
 ## Protocol notes
 

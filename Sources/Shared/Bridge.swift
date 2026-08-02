@@ -9,6 +9,12 @@ import UIKit
 // The Mac/iPad impersonates a Spark 40 amp so an AIRSTEP Spk Edition in Mode 1
 // connects to it and reports footswitch presses. Each press is turned into a
 // configurable MIDI message on a virtual CoreMIDI source named "AIRSTEP Bridge".
+//
+// On iOS the bridge is explicitly started and stopped. While running it holds a
+// silent audio session, which is what actually keeps the process alive in the
+// background — the bluetooth-peripheral background mode alone lets iOS suspend the
+// app after a few minutes, taking the connection with it. Stopping releases
+// everything so the app can be suspended normally.
 
 let SPARK_SERVICE = CBUUID(string: "FFC0")
 let SPARK_WRITE = CBUUID(string: "FFC1")
@@ -24,6 +30,7 @@ struct Activity: Identifiable {
 
 @MainActor
 final class Bridge: NSObject, ObservableObject {
+    @Published var running = false
     @Published var connected = false
     @Published var bleState = "startet"
     @Published var midiReady = false
@@ -40,10 +47,12 @@ final class Bridge: NSObject, ObservableObject {
     private var lastEffectAt = Date.distantPast
     private let burstWindow: TimeInterval = 0.3
     private var flashTask: Task<Void, Never>? = nil
+    private var serviceAdded = false
 
     #if os(iOS)
     private var engine: AVAudioEngine? = nil
     private var silence: AVAudioPlayerNode? = nil
+    private var observers: [NSObjectProtocol] = []
     #endif
 
     init(settings: Settings) {
@@ -53,23 +62,100 @@ final class Bridge: NSObject, ObservableObject {
 
     func boot() {
         setupMIDI()
-        // Restoration identifier lets iOS relaunch us for peripheral events.
         manager = CBPeripheralManager(
             delegate: self, queue: nil,
             options: [CBPeripheralManagerOptionRestoreIdentifierKey: "airstep.bridge.peripheral"])
-        applyKeepAwake()
-    }
-
-    // MARK: - Background keep-alive (iOS)
-
-    func applyKeepAwake() {
         #if os(iOS)
-        UIApplication.shared.isIdleTimerDisabled = settings.keepAwake
-        if settings.keepAwake { startSilentAudio() } else { stopSilentAudio() }
+        registerAudioObservers()
+        #else
+        // The Mac has no suspension problem, so the bridge is simply always on.
+        running = true
         #endif
     }
 
+    // MARK: - Start / stop
+
+    func start() {
+        guard !running else { return }
+        running = true
+        lastError = nil
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = true
+        startSilentAudio()
+        #endif
+        publishIfPossible()
+    }
+
+    func stop() {
+        guard running else { return }
+        running = false
+        manager?.stopAdvertising()
+        manager?.removeAllServices()
+        serviceAdded = false
+        connected = false
+        #if os(iOS)
+        stopSilentAudio()
+        UIApplication.shared.isIdleTimerDisabled = false
+        #endif
+    }
+
+    func toggle() { running ? stop() : start() }
+
+    private func publishIfPossible() {
+        guard running, let m = manager, m.state == .poweredOn, !serviceAdded else { return }
+        let w = CBMutableCharacteristic(type: SPARK_WRITE,
+                                        properties: [.write, .writeWithoutResponse],
+                                        value: nil, permissions: [.writeable])
+        let n = CBMutableCharacteristic(type: SPARK_NOTIFY,
+                                        properties: [.notify, .read],
+                                        value: nil, permissions: [.readable])
+        let svc = CBMutableService(type: SPARK_SERVICE, primary: true)
+        svc.characteristics = [w, n]
+        m.add(svc)
+        serviceAdded = true
+    }
+
+    private func advertise() {
+        guard running, let m = manager, m.state == .poweredOn else { return }
+        guard !m.isAdvertising else { return }
+        m.startAdvertising([
+            CBAdvertisementDataLocalNameKey: "Spark 40 BLE",
+            CBAdvertisementDataServiceUUIDsKey: [SPARK_SERVICE],
+        ])
+    }
+
+    // MARK: - Keeping alive on iOS
+
     #if os(iOS)
+    /// The engine can be torn down by interruptions, route changes or a
+    /// configuration change. Any of those would let iOS suspend us, so restart it.
+    private func registerAudioObservers() {
+        let nc = NotificationCenter.default
+        observers.append(nc.addObserver(forName: AVAudioSession.interruptionNotification,
+                                        object: nil, queue: .main) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            if type == .ended { Task { @MainActor in self?.restartSilenceIfRunning() } }
+        })
+        observers.append(nc.addObserver(forName: AVAudioSession.routeChangeNotification,
+                                        object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.restartSilenceIfRunning() }
+        })
+        observers.append(nc.addObserver(forName: .AVAudioEngineConfigurationChange,
+                                        object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.restartSilenceIfRunning() }
+        })
+    }
+
+    private func restartSilenceIfRunning() {
+        guard running else { return }
+        if engine?.isRunning != true {
+            stopSilentAudio()
+            startSilentAudio()
+        }
+        advertise()
+    }
+
     private func startSilentAudio() {
         guard engine == nil else { return }
         do {
@@ -90,7 +176,7 @@ final class Bridge: NSObject, ObservableObject {
             engine = e
             silence = node
         } catch {
-            lastError = "Hintergrund-Audio: \(error.localizedDescription)"
+            lastError = "Hintergrund: \(error.localizedDescription)"
         }
     }
 
@@ -167,7 +253,7 @@ final class Bridge: NSObject, ObservableObject {
     }
 
     fileprivate func handle(_ bytes: [UInt8]) {
-        guard let frame = parseSparkFrame(bytes) else { return }
+        guard running, let frame = parseSparkFrame(bytes) else { return }
         switch classify(frame) {
         case .preset(let idx):
             guard idx >= 0, idx < 4 else { return }
@@ -184,18 +270,6 @@ final class Bridge: NSObject, ObservableObject {
             return
         }
     }
-
-    private func publishService(_ m: CBPeripheralManager) {
-        let w = CBMutableCharacteristic(type: SPARK_WRITE,
-                                        properties: [.write, .writeWithoutResponse],
-                                        value: nil, permissions: [.writeable])
-        let n = CBMutableCharacteristic(type: SPARK_NOTIFY,
-                                        properties: [.notify, .read],
-                                        value: nil, permissions: [.readable])
-        let svc = CBMutableService(type: SPARK_SERVICE, primary: true)
-        svc.characteristics = [w, n]
-        m.add(svc)
-    }
 }
 
 extension Bridge: CBPeripheralManagerDelegate {
@@ -205,10 +279,12 @@ extension Bridge: CBPeripheralManagerDelegate {
             case .poweredOn:
                 bleState = "bereit"
                 lastError = nil
-                publishService(m)
+                serviceAdded = false
+                publishIfPossible()
             case .poweredOff:
                 bleState = "Bluetooth ist aus"
                 connected = false
+                serviceAdded = false
                 lastError = "Bluetooth einschalten"
             case .unauthorized:
                 bleState = "keine Berechtigung"
@@ -225,15 +301,16 @@ extension Bridge: CBPeripheralManagerDelegate {
     nonisolated func peripheralManager(_ m: CBPeripheralManager,
                                        willRestoreState dict: [String: Any]) {
         // Woken by the system for peripheral events; services are restored for us.
+        Task { @MainActor in
+            serviceAdded = true
+            running = true
+        }
     }
 
     nonisolated func peripheralManager(_ m: CBPeripheralManager, didAdd s: CBService, error: Error?) {
         Task { @MainActor in
             if let error { lastError = "Service: \(error.localizedDescription)"; return }
-            m.startAdvertising([
-                CBAdvertisementDataLocalNameKey: "Spark 40 BLE",
-                CBAdvertisementDataServiceUUIDsKey: [SPARK_SERVICE],
-            ])
+            advertise()
         }
     }
 
@@ -250,7 +327,11 @@ extension Bridge: CBPeripheralManagerDelegate {
 
     nonisolated func peripheralManager(_ m: CBPeripheralManager, central: CBCentral,
                                        didUnsubscribeFrom c: CBCharacteristic) {
-        Task { @MainActor in connected = false }
+        Task { @MainActor in
+            connected = false
+            // Make sure we are discoverable again for the pedal's reconnect.
+            advertise()
+        }
     }
 
     nonisolated func peripheralManager(_ m: CBPeripheralManager, didReceiveRead r: CBATTRequest) {

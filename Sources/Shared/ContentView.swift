@@ -87,12 +87,23 @@ struct ContentView: View {
         #endif
     }
 
+    private var statusColor: Color {
+        if !bridge.running { return .gray }
+        return bridge.connected ? .green : .orange
+    }
+
+    private var statusText: String {
+        if !bridge.running { return "aus — auf Start tippen" }
+        return bridge.connected ? "Pedal verbunden"
+                                : "warte auf Pedal — AIRSTEP in Mode 1 einschalten"
+    }
+
     private var status: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(bridge.connected ? .green : .orange)
+                .fill(statusColor)
                 .frame(width: 10, height: 10)
-            Text(bridge.connected ? "Pedal verbunden" : "warte auf Pedal — AIRSTEP in Mode 1 einschalten")
+            Text(statusText)
                 .font(.callout)
                 .lineLimit(2)
             Spacer()
@@ -126,6 +137,31 @@ struct ContentView: View {
                             compact: compact)
                 }
             }
+            #if os(iOS)
+            Button {
+                bridge.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: bridge.running ? "stop.fill" : "play.fill")
+                    Text(bridge.running ? "Stop" : "Start")
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                }
+                .frame(maxWidth: 240)
+                .padding(.vertical, 13)
+                .background(bridge.running ? Color.red.opacity(0.9) : Color.accentColor)
+                .foregroundStyle(Color.white)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Text(bridge.running
+                 ? "Läuft weiter, wenn du die App verlässt."
+                 : "Aus. Kein Bluetooth, kein Hintergrundbetrieb, kein Akkuverbrauch.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            #endif
+
             HStack(spacing: 8) {
                 Text("Schalter E").font(.caption).foregroundStyle(.secondary)
                 Circle()
@@ -200,10 +236,7 @@ struct ContentView: View {
             }
             #if os(iOS)
             Section("Hintergrund") {
-                Toggle("Aktiv halten (Stille abspielen)", isOn: Binding(
-                    get: { settings.keepAwake },
-                    set: { settings.keepAwake = $0; bridge.applyKeepAwake() }))
-                Text("Hält die App als Audio-App am Leben und verhindert das Sperren des Bildschirms. Nur nötig, wenn iOS die Verbindung im Hintergrund trennt.")
+                Text("Solange die Brücke läuft, hält die App eine stille Audio-Session und den Bildschirm wach — nur so lässt iOS sie im Hintergrund weiterlaufen, ohne die Verbindung zu kappen. Mit Stop endet beides sofort.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             #endif
