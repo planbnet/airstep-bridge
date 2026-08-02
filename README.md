@@ -203,3 +203,7 @@ macOS 27. Only **Mode 1** is supported, which is deliberate — it is the only m
 whose switches send absolute, stable values.
 
 Not affiliated with XSONIC or Positive Grid.
+
+## License
+
+[MIT](LICENSE).
