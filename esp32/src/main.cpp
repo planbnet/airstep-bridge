@@ -1,0 +1,103 @@
+#include <Arduino.h>
+
+#include "ble_spark_emulator.h"
+#include "config.h"
+#include "midi_out.h"
+#include "spark_decode.h"
+#include "status_led.h"
+
+// AIRSTEP Spk Edition -> ESP32-H2 -> 5-pin DIN MIDI -> Line 6 HX Stomp.
+//
+// The pedal only knows how to talk to a Positive Grid Spark 40 amp, so the
+// ESP32 pretends to be one: it advertises the Spark name and service, the pedal
+// connects as if it had found its amp, and every footswitch press arrives as a
+// write on FFC1. Presses are decoded and re-emitted as serial MIDI.
+//
+// Only Mode 1 is supported (power the pedal on while holding footswitch A).
+// The other modes report *relative* changes, so a switch emits a different
+// value on every press and cannot be mapped to a stable trigger.
+//
+// Port of https://github.com/planbnet/airstep-bridge (macOS/iPadOS, Swift).
+
+static const char* NAMES[5] = {"A", "B", "C", "D", "E"};
+
+static uint32_t lastEffectAt = 0;
+static uint32_t lastPresetAt[4] = {0, 0, 0, 0};
+static Tristate driveState = Tristate::Unknown;
+static bool errored = false;
+
+void setup() {
+    Serial.begin(115200);
+    delay(300);  // let the host attach to USB CDC before the first log line
+
+    led::begin();
+    led::setState(led::State::Booting);
+    led::tick();
+
+    midi::begin();
+    Serial.printf("[midi] UART1 TX on GPIO%d, %lu baud\n", MIDI_TX_PIN,
+                  (unsigned long)MIDI_BAUD);
+
+    if (!ble::begin()) {
+        errored = true;
+        led::setState(led::State::Error);
+        Serial.println("[ble] init failed");
+        return;
+    }
+    led::setState(led::State::Waiting);
+}
+
+static void handle(const SwitchEvent& e) {
+    const uint32_t now = millis();
+
+    if (e.index < 4) {
+        // A-D send one frame per press in Mode 1, so this only swallows BLE
+        // retransmissions -- short enough to leave a deliberate double-tap alone.
+        if (now - lastPresetAt[e.index] <= PRESET_DEBOUNCE_MS) return;
+        lastPresetAt[e.index] = now;
+    } else {
+        // Effect frames can arrive in bursts. Every frame extends the window, so
+        // a burst of any length collapses into its first frame.
+        const bool continuation = now - lastEffectAt <= EFFECT_BURST_MS;
+        lastEffectAt = now;
+        if (continuation) return;
+        if (e.state != Tristate::Unknown) driveState = e.state;
+    }
+
+    const Tristate state = e.index == 4 ? driveState : Tristate::Unknown;
+
+    char desc[48];
+    midi::fire(e.index, state, desc, sizeof(desc));
+
+    const SwitchConfig& c = SWITCHES[e.index];
+    led::setSwitchColor(state == Tristate::Off ? c.colorOff : c.color);
+    led::blip();
+
+    if (e.index == 4)
+        Serial.printf("[%s] %s %s -> %s\n", NAMES[e.index], e.name,
+                      state == Tristate::On ? "on" : (state == Tristate::Off ? "off" : "?"),
+                      desc);
+    else
+        Serial.printf("[%s] preset %u -> %s\n", NAMES[e.index], e.index, desc);
+}
+
+void loop() {
+    if (errored) {
+        led::tick();
+        delay(20);
+        return;
+    }
+
+    static bool wasConnected = false;
+    const bool isConnected = ble::connected();
+    if (isConnected != wasConnected) {
+        wasConnected = isConnected;
+        led::setState(isConnected ? led::State::Connected : led::State::Waiting);
+    }
+
+    SwitchEvent e;
+    while (ble::pop(e)) handle(e);
+
+    led::tick();
+    delay(2);
+}

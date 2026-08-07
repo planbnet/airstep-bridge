@@ -1,0 +1,451 @@
+<title>AIRSTEP Bridge — Verkabelung ESP32-H2 → MIDI-Shield → HX Stomp</title>
+
+<style>
+  :root {
+    --paper:    #eef2f0;
+    --card:     #ffffff;
+    --ink:      #0f1918;
+    --ink-soft: #4c5c58;
+    --ink-mute: #778781;
+    --rule:     #ccd6d2;
+    --rule-firm:#a8b6b1;
+    --accent:   #0c7a54;
+    --accent-bg:#e2efe9;
+    --wire-pwr: #c33327;
+    --wire-sig: #c07c00;
+    --warn-bg:  #fbeae7;
+    --warn-rule:#e6b8b1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:    #0c1110;
+      --card:     #141b1a;
+      --ink:      #e7ece9;
+      --ink-soft: #9aaaa5;
+      --ink-mute: #76857f;
+      --rule:     #26332f;
+      --rule-firm:#3c4d48;
+      --accent:   #3ac68e;
+      --accent-bg:#122a21;
+      --wire-pwr: #f06d5e;
+      --wire-sig: #e8a63a;
+      --warn-bg:  #2a1512;
+      --warn-rule:#5a2a24;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:    #eef2f0;
+    --card:     #ffffff;
+    --ink:      #0f1918;
+    --ink-soft: #4c5c58;
+    --ink-mute: #778781;
+    --rule:     #ccd6d2;
+    --rule-firm:#a8b6b1;
+    --accent:   #0c7a54;
+    --accent-bg:#e2efe9;
+    --wire-pwr: #c33327;
+    --wire-sig: #c07c00;
+    --warn-bg:  #fbeae7;
+    --warn-rule:#e6b8b1;
+  }
+  :root[data-theme="dark"] {
+    --paper:    #0c1110;
+    --card:     #141b1a;
+    --ink:      #e7ece9;
+    --ink-soft: #9aaaa5;
+    --ink-mute: #76857f;
+    --rule:     #26332f;
+    --rule-firm:#3c4d48;
+    --accent:   #3ac68e;
+    --accent-bg:#122a21;
+    --wire-pwr: #f06d5e;
+    --wire-sig: #e8a63a;
+    --warn-bg:  #2a1512;
+    --warn-rule:#5a2a24;
+  }
+
+  /* Mono is the display face here: this is an engineering drawing, not an essay. */
+  body {
+    margin: 0;
+    padding: 0 20px 96px;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 68ch; margin: 0 auto; }
+  .bleed { max-width: 980px; margin-left: auto; margin-right: auto; }
+
+  header { padding: 64px 0 40px; }
+  .eyebrow {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 18px;
+  }
+  h1 {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: clamp(30px, 5.4vw, 44px); font-weight: 700;
+    letter-spacing: -0.025em; line-height: 1.08;
+    text-wrap: balance; margin: 0 0 20px;
+  }
+  .standfirst { font-size: 19px; line-height: 1.55; color: var(--ink-soft); margin: 0; text-wrap: pretty; }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  h2 {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; letter-spacing: 0.13em; text-transform: uppercase;
+    font-weight: 700; color: var(--ink);
+    margin: 0 0 20px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule-firm);
+  }
+  section { margin-top: 64px; }
+  p { margin: 0 0 17px; text-wrap: pretty; }
+  p:last-child { margin-bottom: 0; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.885em; background: var(--card);
+    border: 1px solid var(--rule); border-radius: 4px;
+    padding: 0.1em 0.36em;
+  }
+
+  figure { margin: 0; }
+  figure.bleed { margin-bottom: 14px; }
+  .figbox {
+    background: var(--card); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 22px 18px;
+    overflow-x: auto;
+  }
+  svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  figcaption {
+    font-size: 14.5px; line-height: 1.5; color: var(--ink-soft);
+    margin-top: 14px; max-width: 68ch;
+    margin-left: auto; margin-right: auto;
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 15.5px; }
+  th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-mute); font-weight: 600;
+    border-bottom: 1px solid var(--rule-firm);
+  }
+  td.pin { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14.5px; white-space: nowrap; }
+  .swatch {
+    display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+    margin-right: 8px; vertical-align: baseline;
+    border: 1px solid rgba(128,128,128,0.45);
+  }
+
+  .callout {
+    background: var(--warn-bg); border: 1px solid var(--warn-rule);
+    border-radius: 10px; padding: 18px 20px; margin: 28px 0 0;
+    font-size: 16px;
+  }
+  .callout .tag {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--wire-pwr); font-weight: 700;
+    display: block; margin-bottom: 9px;
+  }
+  .note {
+    background: var(--accent-bg); border: 1px solid var(--accent);
+    border-radius: 10px; padding: 18px 20px; margin: 28px 0 0; font-size: 16px;
+  }
+  .note .tag {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+    display: block; margin-bottom: 9px;
+  }
+
+  ol.checks { margin: 0; padding-left: 0; list-style: none; counter-reset: c; }
+  ol.checks li {
+    counter-increment: c; position: relative;
+    padding-left: 40px; margin-bottom: 20px;
+  }
+  ol.checks li::before {
+    content: counter(c);
+    position: absolute; left: 0; top: 1px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; font-weight: 700; color: var(--accent);
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 1px solid var(--accent);
+    display: grid; place-items: center;
+  }
+  ol.checks li b { font-weight: 600; }
+
+  .inset { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+  .inset .figbox { flex: 0 0 auto; padding: 14px; }
+  .inset .prose { flex: 1 1 300px; min-width: 260px; }
+
+  footer {
+    margin-top: 72px; padding-top: 22px;
+    border-top: 1px solid var(--rule);
+    font-size: 14.5px; color: var(--ink-mute);
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">AIRSTEP Bridge · ESP32-H2-DevKitM-1</p>
+    <h1>Verkabelung</h1>
+    <p class="standfirst">Drei Drähte zum MIDI-Shield, ein MIDI-Kabel zum HX Stomp. Die einzige nicht offensichtliche Entscheidung: der Pin, auf dem <strong>5V</strong> steht, bekommt <strong>3,3 V</strong> — sonst steht die Stromschleife im Ruhezustand nicht still.</p>
+  </header>
+</div>
+
+<figure class="bleed">
+  <div class="figbox">
+    <svg viewBox="0 0 900 380" role="img" aria-label="Drei Drähte verbinden 3V3, GND und GPIO10 des ESP32-H2 mit VCC, GND und D1 des MIDI-Shields; vom MIDI-OUT des Shields führt ein DIN-5-Kabel zum MIDI IN des HX Stomp.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- ESP32 board -->
+      <rect x="26" y="52" width="196" height="276" rx="7" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <rect x="26" y="52" width="196" height="34" rx="7" fill="currentColor" opacity="0.07"/>
+      <text x="124" y="74" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13.5" font-weight="700" fill="currentColor">ESP32-H2-DevKitM-1</text>
+      <text x="124" y="316" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="currentColor" opacity="0.55">3,3 V Logik</text>
+
+      <!-- ESP32 pins -->
+      <circle cx="222" cy="130" r="5.5" fill="var(--wire-pwr)"/>
+      <text x="206" y="126" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">3V3</text>
+      <circle cx="222" cy="205" r="5.5" fill="currentColor"/>
+      <text x="206" y="201" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">GND</text>
+      <circle cx="222" cy="280" r="5.5" fill="var(--wire-sig)"/>
+      <text x="206" y="276" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">GPIO10</text>
+
+      <!-- wires -->
+      <line x1="222" y1="130" x2="452" y2="130" stroke="var(--wire-pwr)" stroke-width="3"/>
+      <text x="337" y="120" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="var(--wire-pwr)">3,3 V</text>
+      <text x="337" y="150" text-anchor="middle" font-size="12.5" fill="currentColor" opacity="0.6">nicht 5 V</text>
+
+      <line x1="222" y1="205" x2="452" y2="205" stroke="currentColor" stroke-width="3"/>
+      <text x="337" y="195" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="currentColor">GND</text>
+
+      <line x1="222" y1="280" x2="452" y2="280" stroke="var(--wire-sig)" stroke-width="3"/>
+      <text x="337" y="270" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="var(--wire-sig)">MIDI-Daten</text>
+      <text x="337" y="300" text-anchor="middle" font-size="12.5" fill="currentColor" opacity="0.6">31250 Baud</text>
+
+      <!-- Shield -->
+      <rect x="452" y="52" width="212" height="276" rx="7" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <rect x="452" y="52" width="212" height="34" rx="7" fill="var(--accent)" opacity="0.16"/>
+      <text x="558" y="74" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13.5" font-weight="700" fill="currentColor">MIDI-Shield</text>
+
+      <circle cx="452" cy="130" r="5.5" fill="var(--wire-pwr)"/>
+      <text x="468" y="126" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">5V</text>
+      <text x="468" y="144" font-size="11.5" fill="currentColor" opacity="0.55">(so beschriftet)</text>
+      <circle cx="452" cy="205" r="5.5" fill="currentColor"/>
+      <text x="468" y="201" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">GND</text>
+      <circle cx="452" cy="280" r="5.5" fill="var(--wire-sig)"/>
+      <text x="468" y="276" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">D1 / TX</text>
+
+      <!-- DIN socket on shield -->
+      <circle cx="628" cy="205" r="26" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <circle cx="628" cy="196" r="3" fill="currentColor" opacity="0.5"/>
+      <circle cx="616" cy="204" r="3" fill="currentColor" opacity="0.5"/>
+      <circle cx="640" cy="204" r="3" fill="currentColor" opacity="0.5"/>
+      <text x="628" y="252" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="12.5" font-weight="700" fill="var(--accent)">MIDI OUT</text>
+
+      <!-- unused sockets, drawn faint so they are not mistaken for the right one -->
+      <circle cx="628" cy="118" r="17" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.28"/>
+      <text x="628" y="96" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.45">IN — frei</text>
+      <circle cx="628" cy="300" r="17" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.28"/>
+      <text x="628" y="330" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.45">THRU — frei</text>
+
+      <!-- MIDI cable -->
+      <line x1="656" y1="205" x2="762" y2="205" stroke="currentColor" stroke-width="3.5" marker-end="url(#ar)"/>
+      <text x="709" y="194" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="12.5" fill="currentColor">DIN-5</text>
+
+      <!-- HX Stomp -->
+      <rect x="770" y="150" width="104" height="110" rx="7" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <text x="822" y="196" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="currentColor">HX</text>
+      <text x="822" y="214" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="currentColor">Stomp</text>
+      <text x="822" y="240" text-anchor="middle" font-size="11.5" fill="currentColor" opacity="0.6">MIDI IN</text>
+    </svg>
+  </div>
+  <figcaption>Drei Jumper und ein MIDI-Kabel. <b>MIDI IN und THRU am Shield bleiben unbeschaltet</b> — die Brücke ist eine Einbahnstraße. Der Optokoppler auf dem Shield sitzt ausschließlich im IN-Zweig; der OUT-Zweig ist passiv, nur zwei Widerstände.</figcaption>
+</figure>
+
+<div class="wrap">
+  <section>
+    <h2>Die drei Verbindungen</h2>
+    <table>
+      <thead>
+        <tr><th>Draht</th><th>ESP32-H2</th><th>Shield</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="swatch" style="background:var(--wire-pwr)"></span>rot</td>
+          <td class="pin">3V3</td>
+          <td class="pin">5V</td>
+        </tr>
+        <tr>
+          <td><span class="swatch" style="background:var(--ink)"></span>schwarz</td>
+          <td class="pin">GND</td>
+          <td class="pin">GND</td>
+        </tr>
+        <tr>
+          <td><span class="swatch" style="background:var(--wire-sig)"></span>gelb</td>
+          <td class="pin">GPIO10</td>
+          <td class="pin">D1 (TX)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <span class="tag">Nicht vertippen</span>
+      Der Shield-Pin heißt <code>5V</code>, bekommt aber <code>3V3</code>. Das ist Absicht und der einzige Punkt, an dem diese Verkabelung von der Arduino-Anleitung auf deinem Screenshot abweicht — dort sitzt ein 5-V-Arduino, dessen TX-Pin ebenfalls 5 V ausgibt.
+    </div>
+  </section>
+
+  <section>
+    <h2>Warum 3,3 V</h2>
+    <p>MIDI OUT ist keine Spannungs-, sondern eine <strong>Stromschleife</strong>: 5 mA fließen oder nicht. Der Empfänger im HX Stomp sieht nur eine Optokoppler-LED, und die entscheidende Größe ist, ob sie im Ruhezustand wirklich <em>aus</em> ist.</p>
+    <p>Im Ruhezustand liegt TX auf High. Speist du die Schleife aus 5 V, treibst sie aber mit einem 3,3-V-Pin, bleiben 1,7 V übrig, die weiterhin Strom durch die LED schieben.</p>
+  </section>
+</div>
+
+<figure class="bleed">
+  <div class="figbox">
+    <svg viewBox="0 0 900 300" role="img" aria-label="Vergleich zweier Stromschleifen. Mit 5 Volt Versorgung und 3,3-Volt-Logik fließen im Ruhezustand noch 1,1 Milliampere. Mit 3,3 Volt Versorgung fließen im Ruhezustand 0 Milliampere und beim Senden 4,8 Milliampere.">
+      <!-- ============ Panel A: 5 V, wrong ============ -->
+      <rect x="8" y="8" width="430" height="284" rx="9" fill="none" stroke="var(--warn-rule)" stroke-width="1.5"/>
+      <text x="28" y="38" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="var(--wire-pwr)">VCC = 5 V — falsch</text>
+
+      <!-- supply node + resistor -->
+      <text x="86" y="72" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="currentColor">5 V</text>
+      <line x1="86" y1="80" x2="86" y2="104" stroke="currentColor" stroke-width="2"/>
+      <rect x="72" y="104" width="28" height="46" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <text x="60" y="132" text-anchor="end" font-size="11.5" fill="currentColor" opacity="0.7">220 Ω</text>
+      <line x1="86" y1="150" x2="86" y2="212" stroke="currentColor" stroke-width="2"/>
+
+      <!-- loop bottom with LED -->
+      <line x1="86" y1="212" x2="182" y2="212" stroke="currentColor" stroke-width="2"/>
+      <polygon points="182,200 182,224 206,212" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <line x1="206" y1="199" x2="206" y2="225" stroke="currentColor" stroke-width="1.8"/>
+      <line x1="212" y1="196" x2="222" y2="186" stroke="currentColor" stroke-width="1.4"/>
+      <line x1="220" y1="202" x2="230" y2="192" stroke="currentColor" stroke-width="1.4"/>
+      <line x1="206" y1="212" x2="330" y2="212" stroke="currentColor" stroke-width="2"/>
+      <text x="200" y="252" text-anchor="middle" font-size="11.5" fill="currentColor" opacity="0.7">Opto im HX Stomp</text>
+      <text x="200" y="268" text-anchor="middle" font-size="11.5" fill="currentColor" opacity="0.7">U&#8202;f ≈ 1,2 V</text>
+
+      <!-- TX side -->
+      <line x1="330" y1="212" x2="330" y2="150" stroke="currentColor" stroke-width="2"/>
+      <rect x="316" y="104" width="28" height="46" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <text x="356" y="132" font-size="11.5" fill="currentColor" opacity="0.7">220 Ω</text>
+      <line x1="330" y1="104" x2="330" y2="80" stroke="currentColor" stroke-width="2"/>
+      <text x="330" y="72" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="var(--wire-sig)">TX = 3,3 V</text>
+
+      <!-- readout -->
+      <line x1="28" y1="166" x2="418" y2="166" stroke="var(--warn-rule)" stroke-width="1" stroke-dasharray="3 4"/>
+      <text x="418" y="190" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="var(--wire-pwr)">Ruhe: 1,1 mA</text>
+      <text x="418" y="208" text-anchor="end" font-size="11.5" fill="currentColor" opacity="0.7">LED glimmt weiter</text>
+
+      <!-- ============ Panel B: 3.3 V, right ============ -->
+      <rect x="462" y="8" width="430" height="284" rx="9" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="482" y="38" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="var(--accent)">VCC = 3,3 V — richtig</text>
+
+      <text x="540" y="72" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="var(--wire-pwr)">3,3 V</text>
+      <line x1="540" y1="80" x2="540" y2="104" stroke="currentColor" stroke-width="2"/>
+      <rect x="526" y="104" width="28" height="46" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <text x="514" y="132" text-anchor="end" font-size="11.5" fill="currentColor" opacity="0.7">220 Ω</text>
+      <line x1="540" y1="150" x2="540" y2="212" stroke="currentColor" stroke-width="2"/>
+
+      <line x1="540" y1="212" x2="636" y2="212" stroke="currentColor" stroke-width="2"/>
+      <polygon points="636,200 636,224 660,212" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <line x1="660" y1="199" x2="660" y2="225" stroke="currentColor" stroke-width="1.8"/>
+      <line x1="666" y1="196" x2="676" y2="186" stroke="currentColor" stroke-width="1.4"/>
+      <line x1="674" y1="202" x2="684" y2="192" stroke="currentColor" stroke-width="1.4"/>
+      <line x1="660" y1="212" x2="784" y2="212" stroke="currentColor" stroke-width="2"/>
+      <text x="654" y="252" text-anchor="middle" font-size="11.5" fill="currentColor" opacity="0.7">Opto im HX Stomp</text>
+      <text x="654" y="268" text-anchor="middle" font-size="11.5" fill="currentColor" opacity="0.7">U&#8202;f ≈ 1,2 V</text>
+
+      <line x1="784" y1="212" x2="784" y2="150" stroke="currentColor" stroke-width="2"/>
+      <rect x="770" y="104" width="28" height="46" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <text x="810" y="132" font-size="11.5" fill="currentColor" opacity="0.7">220 Ω</text>
+      <line x1="784" y1="104" x2="784" y2="80" stroke="currentColor" stroke-width="2"/>
+      <text x="784" y="72" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="var(--wire-sig)">TX = 3,3 V</text>
+
+      <line x1="482" y1="166" x2="872" y2="166" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 4"/>
+      <text x="872" y="190" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="13" font-weight="700" fill="var(--accent)">Ruhe: 0 mA</text>
+      <text x="872" y="208" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="12.5" fill="currentColor" opacity="0.8">Senden: 4,8 mA</text>
+    </svg>
+  </div>
+  <figcaption>Links bleibt bei High-Pegel eine Differenz von 5&nbsp;−&nbsp;3,3&nbsp;=&nbsp;1,7&nbsp;V über der Schleife stehen; abzüglich der LED-Flussspannung treibt das noch etwa 1,1&nbsp;mA. Rechts ist die Versorgung gleich dem High-Pegel, die Differenz also exakt null. Beim Senden zieht TX auf Masse: <b>(3,3&nbsp;−&nbsp;1,2)&nbsp;/&nbsp;440&nbsp;Ω&nbsp;≈&nbsp;4,8&nbsp;mA</b> — genau die 5&nbsp;mA, die die MIDI-Spezifikation vorsieht.</figcaption>
+</figure>
+
+<div class="wrap">
+  <p style="margin-top:26px">1,1 mA ist die unangenehme Größenordnung: knapp an der Schaltschwelle des Optokopplers. Das kann funktionieren, sporadisch funktionieren oder gar nicht funktionieren — und ein Fehler, der manchmal weggeht, kostet mehr Zeit als einer, der immer da ist. Mit 3,3 V stellt sich die Frage nicht.</p>
+
+  <section>
+    <h2>Vor dem Einschalten prüfen</h2>
+    <ol class="checks">
+      <li><b>Welcher Header-Pin treibt MIDI OUT?</b> Auf praktisch allen Uno-MIDI-Shields ist es <code>D1</code>, der TX-Pin. Verifizieren kannst du es mit dem Durchgangsprüfer: von <b>Pin 5 der MIDI-OUT-Buchse</b> gegen <code>D1</code> messen — dazwischen liegt der 220-Ω-Widerstand, du misst also keinen Durchgang, sondern rund 220 Ω.</li>
+      <li><b>Und welcher liegt an Pin 4?</b> Von <b>Pin 4 der OUT-Buchse</b> gegen den <code>5V</code>-Header ebenfalls ~220 Ω. Findest du beides, ist die Buchse ein normaler MIDI-OUT und die Verkabelung oben stimmt.</li>
+      <li><b>Falls das Shield einen RUN/PROG-Schalter hat:</b> auf <code>RUN</code>. Er trennt nur MIDI IN von RX, betrifft dich also nicht — aber er kostet nichts.</li>
+      <li><b>Am HX Stomp:</b> <code>Global Settings → MIDI/Tempo → MIDI Base Channel</code> auf <b>1</b> (Werkseinstellung), und im Preset muss ein <b>1 Switch Looper</b>-Block liegen, der einem Footswitch im Stomp-Modus zugewiesen ist. Nur für diesen Block dokumentiert Line 6 die Looper-CCs.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>DIN-5-Nummerierung</h2>
+    <div class="inset">
+      <div class="figbox">
+        <figure>
+          <svg viewBox="0 0 190 200" width="190" role="img" aria-label="Frontansicht einer fünfpoligen DIN-Buchse. Von links nach rechts auf dem Bogen: Pin 1 unbenutzt, Pin 4 Versorgung, Pin 2 Masse in der Mitte, Pin 5 Daten, Pin 3 unbenutzt.">
+            <circle cx="95" cy="92" r="76" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="95" cy="92" r="66" fill="none" stroke="currentColor" stroke-width="0.9" opacity="0.35"/>
+
+            <circle cx="40" cy="92" r="6" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+            <text x="40" y="116" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="currentColor" opacity="0.45">1</text>
+
+            <circle cx="56" cy="53" r="6" fill="var(--wire-pwr)"/>
+            <text x="50" y="38" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11.5" font-weight="700" fill="currentColor">4</text>
+
+            <circle cx="95" cy="37" r="6" fill="currentColor"/>
+            <text x="95" y="22" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11.5" font-weight="700" fill="currentColor">2</text>
+
+            <circle cx="134" cy="53" r="6" fill="var(--wire-sig)"/>
+            <text x="140" y="38" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11.5" font-weight="700" fill="currentColor">5</text>
+
+            <circle cx="150" cy="92" r="6" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+            <text x="150" y="116" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="currentColor" opacity="0.45">3</text>
+
+            <text x="95" y="192" text-anchor="middle" font-size="11.5" fill="currentColor" opacity="0.6">Buchse von vorn</text>
+          </svg>
+        </figure>
+      </div>
+      <div class="prose">
+        <p style="margin-top:2px">Nur drei der fünf Pins werden benutzt, und sie sitzen nicht in der Reihenfolge, die man erwartet — auf dem Bogen von links nach rechts: <code>1&nbsp;4&nbsp;2&nbsp;5&nbsp;3</code>.</p>
+        <p><span class="swatch" style="background:var(--wire-pwr)"></span><b>Pin 4</b> — Versorgung über 220 Ω<br>
+        <span class="swatch" style="background:var(--ink)"></span><b>Pin 2</b> — Masse / Schirm<br>
+        <span class="swatch" style="background:var(--wire-sig)"></span><b>Pin 5</b> — Daten über 220 Ω</p>
+        <p>Pin 1 und 3 sind bei MIDI unbelegt. Brauchst du das Shield am Ende gar nicht, ist genau das die ganze Schaltung: eine Buchse und zwei Widerstände.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Testen, ohne etwas anzustecken</h2>
+    <p>Das Byte-Muster kannst du schon vor dem MIDI-Kabel prüfen: in <code>config.h</code> <code>MIDI_LOOPBACK_RX_PIN</code> auf <code>11</code> setzen, eine Drahtbrücke von <b>GPIO10 nach GPIO11</b>, neu flashen. Die Firmware liest dann zurück, was sie selbst gesendet hat:</p>
+    <div class="note">
+      <span class="tag">Erwartete Ausgabe</span>
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:14px;line-height:1.7">
+        [A] preset 0 -&gt; CC 60 = 127 ch 1<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;loopback: B0 3C 7F
+      </div>
+      <p style="margin:12px 0 0;font-size:15px"><code>B0</code> = Control Change auf Kanal 1, <code>3C</code> = 60, <code>7F</code> = 127. Kommen diese drei Bytes an, stimmt Baudrate, Pin und Encoding — Montag ist dann nur noch die Verkabelung offen.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p><b>Was hier Annahme ist:</b> die Header-Belegung des Shields habe ich aus dem Standard-Design für Arduino-Uno-MIDI-Shields und deinem Foto abgeleitet, nicht aus dessen Datenblatt. Die beiden Widerstandsmessungen in Schritt 1 und 2 bestätigen sie in einer Minute — mach sie, bevor du 3,3 V anlegst.</p>
+    <p style="margin-bottom:0">Falls das Shield doch einen Treiberbaustein im OUT-Zweig hat statt nur Widerstände: 3,3 V bleibt richtig, HC-Logik arbeitet ab 2 V.</p>
+  </footer>
+</div>

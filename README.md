@@ -123,6 +123,13 @@ so the AIRSTEP cannot *discover* the app while it is backgrounded. An establishe
 connection is unaffected — but if it does drop, foreground the app briefly so the
 pedal can find it again.
 
+## Standalone hardware version
+
+[`esp32/`](esp32/README.md) is the same trick on an **ESP32-H2**, with no computer
+involved at all: the board impersonates the amp and emits **5-pin DIN MIDI** from a
+UART, aimed at a Line 6 HX Stomp. Same protocol, same Mode 1 restriction; PlatformIO
+instead of Xcode.
+
 ## Protocol notes
 
 Reverse-engineered from the pedal's traffic, cross-checked against
