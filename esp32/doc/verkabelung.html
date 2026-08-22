@@ -210,15 +210,15 @@
       <rect x="26" y="52" width="196" height="276" rx="7" fill="none" stroke="currentColor" stroke-width="1.6"/>
       <rect x="26" y="52" width="196" height="34" rx="7" fill="currentColor" opacity="0.07"/>
       <text x="124" y="74" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13.5" font-weight="700" fill="currentColor">ESP32-H2-DevKitM-1</text>
-      <text x="124" y="316" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="currentColor" opacity="0.55">3,3 V Logik</text>
+      <text x="124" y="316" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="currentColor" opacity="0.55">Beschriftung wie aufgedruckt</text>
 
       <!-- ESP32 pins -->
       <circle cx="222" cy="130" r="5.5" fill="var(--wire-pwr)"/>
       <text x="206" y="126" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">3V3</text>
       <circle cx="222" cy="205" r="5.5" fill="currentColor"/>
-      <text x="206" y="201" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">GND</text>
+      <text x="206" y="201" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">G</text>
       <circle cx="222" cy="280" r="5.5" fill="var(--wire-sig)"/>
-      <text x="206" y="276" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">GPIO10</text>
+      <text x="206" y="276" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="14" font-weight="700" fill="currentColor">10</text>
 
       <!-- wires -->
       <line x1="222" y1="130" x2="452" y2="130" stroke="var(--wire-pwr)" stroke-width="3"/>
@@ -282,21 +282,23 @@
       <tbody>
         <tr>
           <td><span class="swatch" style="background:var(--wire-pwr)"></span>rot</td>
-          <td class="pin">3V3</td>
+          <td class="pin">3V3 <span style="color:var(--ink-mute)">· J1</span></td>
           <td class="pin">5V</td>
         </tr>
         <tr>
           <td><span class="swatch" style="background:var(--ink)"></span>schwarz</td>
-          <td class="pin">GND</td>
+          <td class="pin">G <span style="color:var(--ink-mute)">· beliebig</span></td>
           <td class="pin">GND</td>
         </tr>
         <tr>
           <td><span class="swatch" style="background:var(--wire-sig)"></span>gelb</td>
-          <td class="pin">GPIO10</td>
+          <td class="pin">10 <span style="color:var(--ink-mute)">· J3</span></td>
           <td class="pin">D1 (TX)</td>
         </tr>
       </tbody>
     </table>
+
+    <p style="margin-top:18px;font-size:15.5px;color:var(--ink-soft)">Die Namen sind die, die auf der Platine stehen: der Datenpin ist mit <code>10</code> bedruckt, Masse mit <code>G</code> (davon gibt es mehrere, nimm irgendeinen). <code>3V3</code> sitzt auf dem gegenüberliegenden Header J1, <code>10</code> auf J3.</p>
 
     <div class="callout">
       <span class="tag">Nicht vertippen</span>
@@ -433,7 +435,7 @@
 
   <section>
     <h2>Testen, ohne etwas anzustecken</h2>
-    <p>Das Byte-Muster kannst du schon vor dem MIDI-Kabel prüfen: in <code>config.h</code> <code>MIDI_LOOPBACK_RX_PIN</code> auf <code>11</code> setzen, eine Drahtbrücke von <b>GPIO10 nach GPIO11</b>, neu flashen. Die Firmware liest dann zurück, was sie selbst gesendet hat:</p>
+    <p>Das Byte-Muster kannst du schon vor dem MIDI-Kabel prüfen: in <code>config.h</code> <code>MIDI_LOOPBACK_RX_PIN</code> auf <code>11</code> setzen, eine Drahtbrücke von <b>Pin <code>10</code> nach Pin <code>11</code></b> (beide auf J3, direkt nebeneinander), neu flashen. Die Firmware liest dann zurück, was sie selbst gesendet hat:</p>
     <div class="note">
       <span class="tag">Erwartete Ausgabe</span>
       <div style="font-family:ui-monospace,Menlo,monospace;font-size:14px;line-height:1.7">
