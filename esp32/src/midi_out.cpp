@@ -39,12 +39,45 @@ static void raw3(uint8_t status, uint8_t a, uint8_t b) {
     port.write(buf, 3);
 }
 
-void fire(uint8_t index, Tristate state, char* desc, size_t descCap) {
+void fire(uint8_t index, Tristate state, bool looperStopped, char* desc,
+          size_t descCap) {
     if (index >= 5) { snprintf(desc, descCap, "?"); return; }
     const SwitchConfig& c = SWITCHES[index];
     if (!c.enabled) { snprintf(desc, descCap, "disabled"); return; }
 
     const uint8_t chan = (c.channel < 1 ? 1 : (c.channel > 16 ? 16 : c.channel)) - 1;
+
+    // A stopped looper takes the alternative sequence where one is configured.
+    const MidiStep* seq = c.seq;
+    uint8_t seqLen = c.seqLen;
+    const char* seqTag = "";
+    if (looperStopped && c.seqWhenStopped != nullptr) {
+        seq = c.seqWhenStopped;
+        seqLen = c.seqWhenStoppedLen;
+        seqTag = " (new loop)";
+    }
+
+    // A sequence replaces the single message entirely. The pauses block the main
+    // loop, which is fine at these lengths: BLE runs on its own task so nothing is
+    // dropped, presses queue up behind it, and the only visible cost is the status
+    // LED updating a fraction of a second late.
+    if (seq != nullptr && seqLen > 0) {
+        for (uint8_t i = 0; i < seqLen; ++i) {
+            const MidiStep& st = seq[i];
+            if ((st.status & 0xF0) == 0xC0)
+                raw2(st.status | chan, st.d1);
+            else
+                raw3(st.status | chan, st.d1, st.d2);
+            port.flush();
+            if (st.waitAfterMs) delay(st.waitAfterMs);
+        }
+        if (seqLen == 1 && (seq[0].status & 0xF0) == 0xB0)
+            snprintf(desc, descCap, "CC %u = %u ch %u%s", seq[0].d1, seq[0].d2, chan + 1,
+                     seqTag);
+        else
+            snprintf(desc, descCap, "sequence, %u steps%s", seqLen, seqTag);
+        return;
+    }
 
     // With splitToggle, "off" gets its own message number so the HX Stomp can
     // bind on and off to separate actions. Falls back to the single number when

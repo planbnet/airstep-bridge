@@ -16,8 +16,12 @@ void begin();
 ///
 /// `state` is the pedal's reported on/off state and only matters for switch E:
 /// it selects the CC value with followToggle, or the message number with
-/// splitToggle. Writes a human-readable description of what was sent into
-/// `desc`, for the log.
-void fire(uint8_t index, Tristate state, char* desc, size_t descCap);
+/// splitToggle.
+///
+/// `looperStopped` says we last told the HX Stomp to stop, which lets switch A
+/// start a new loop rather than advance the looper's cycle.
+///
+/// Writes a human-readable description of what was sent into `desc`, for the log.
+void fire(uint8_t index, Tristate state, bool looperStopped, char* desc, size_t descCap);
 
 }  // namespace midi

@@ -180,32 +180,32 @@
 
   <section>
     <h2>Aktuelle Belegung</h2>
-    <p>Zielt auf den <strong>1 Switch Looper</strong> des HX Stomp. Kanal 1 für alle.</p>
+    <p>Zielt auf den <strong>1 Switch Looper</strong> des HX Stomp, der am Ende eines ganz normalen Presets liegt. Kanal 1 für alle.</p>
     <div class="tablewrap">
       <table>
         <thead>
           <tr><th>Switch</th><th class="m">Sendet</th><th>Wirkung am HX Stomp</th></tr>
         </thead>
         <tbody>
-          <tr>
+          <tr class="hl">
             <td><span class="swatch" style="background:#00c853"></span>A</td>
-            <td class="m">CC 60 = 127</td>
-            <td>Record — neuen Loop aufnehmen</td>
+            <td class="m">CC 49 = 127<br><span style="color:var(--ink-mute)">oder CC 60 = 127</span></td>
+            <td>Record / Stop / Overdub — Tap auf den Footswitch, auf dem der Block liegt, also der native Zyklus des HX&nbsp;Stomp.<br><strong>Nach einem Stopp per E</strong> stattdessen Record, was einen neuen Loop startet und den alten verwirft.</td>
           </tr>
           <tr>
             <td><span class="swatch" style="background:#00b4ff"></span>B</td>
-            <td class="m">CC 60 = 0</td>
-            <td>Overdub — auf den Loop drauflegen</td>
+            <td class="m">CC 63 = 127</td>
+            <td>Undo / Redo — letztes Overdub zurücknehmen</td>
           </tr>
           <tr>
             <td><span class="swatch" style="background:#4040ff"></span>C</td>
-            <td class="m">CC 62 = 127</td>
-            <td>Play Once — einmal durchspielen, dann stoppen</td>
+            <td class="m">CC 69 = 8</td>
+            <td>Nächster Snapshot — schaltet lückenlos, ohne den Loop anzutasten</td>
           </tr>
           <tr>
             <td><span class="swatch" style="background:#ff00c8"></span>D</td>
-            <td class="m">CC 63 = 127</td>
-            <td>Undo / Redo — letztes Overdub zurücknehmen</td>
+            <td class="m">CC 62 = 127</td>
+            <td>Play Once — einmal durchspielen, dann stoppen</td>
           </tr>
           <tr class="hl">
             <td><span class="swatch" style="background:#ff8c00"></span>E</td>
@@ -215,7 +215,7 @@
         </tbody>
       </table>
     </div>
-    <p style="margin-top:18px">A und B teilen sich <code>CC 60</code> und unterscheiden sich nur im <em>Wert</em> — so trennt dieser CC Record von Overdub. Die Farben sind die Status-LED des ESP32 nach dem jeweiligen Druck.</p>
+    <p style="margin-top:18px">Die Farben sind die Status-LED des ESP32 nach dem jeweiligen Druck. <code>CC 49</code> emuliert einen Tritt auf HX-Footswitch&nbsp;1 — dort muss der Looper-Block liegen; für Switch&nbsp;2 oder 3 wären es <code>CC 50</code> bzw. <code>51</code>.</p>
   </section>
 
   <section>
@@ -276,6 +276,18 @@
 
 <div class="wrap">
   <section>
+    <h2>Warum es keine Löschen-Taste gibt</h2>
+    <p>Ursprünglich sollte C den Loop löschen. Das geht nicht, und zwar aus einem Grund, der sich erst beim Messen zeigte.</p>
+    <p>Auf der Hardware löscht man, indem man den Footswitch <em>hält</em>. Über MIDI wäre dafür nötig, dass <code>CC 49</code> zwischen Drücken und Loslassen unterscheidet. Tut es nicht: drei Nachrichten mit den Werten <code>0</code>, <code>127</code>, <code>127</code> haben den Looper am Gerät exakt drei Schritte weitergeschaltet. <strong>Der Wert wird ignoriert, jede Nachricht ist genau ein Tastendruck</strong> — ein Halten ist nicht darstellbar.</p>
+    <p>Der naheliegende Ersatz war eine Sequenz aus Stopp, Record und sofortigem Stopp: Record über einen gestoppten Loop verwirft den alten. Das funktioniert auch, hinterlässt aber statt eines leeren Loopers einen 40&nbsp;ms kurzen — hörbar als Knacken im Kreis.</p>
+    <div class="note">
+      <span class="tag">Die Lösung</span>
+      <p>Löschen ist gar keine Taste mehr. Weil das Pedal den An/Aus-Zustand von E selbst führt, <em>weiß</em> die Bridge, wenn zuletzt gestoppt wurde — und lässt A dann einen neuen Loop beginnen statt den Zyklus weiterzuschalten. Löschen wird damit zu dem, was ohnehin passiert, wenn man nach dem Stoppen neu aufnimmt.</p>
+    </div>
+    <p style="margin-top:22px">Der Rest der Kette ist derselbe wie bei E: stoppst du am HX Stomp selbst statt mit dem Pedal, weiß die Bridge nichts davon und A schaltet weiter, statt neu zu beginnen. Ein Tritt geht daneben, danach stimmt es wieder.</p>
+  </section>
+
+  <section>
     <h2>Belegung ändern</h2>
     <p>Alles steckt in der <code>SWITCHES</code>-Tabelle in <code>src/config.h</code>. Reihenfolge ist A, B, C, D, E; danach <code>pio run --target upload</code>.</p>
     <pre><code>// enabled, kind, number, channel, value,
@@ -295,6 +307,8 @@
           <tr><td class="m">offNumber</td><td>Die Nummer für „aus“, nur mit <code>splitToggle</code></td></tr>
           <tr><td class="m">color</td><td>Status-LED nach dem Druck, <code>0xRRGGBB</code></td></tr>
           <tr><td class="m">colorOff</td><td>Farbe, wenn das Pedal „aus“ meldet (nur E)</td></tr>
+          <tr><td class="m">seq<br>seqLen</td><td>Statt einer einzelnen Nachricht eine ganze Folge senden, jede mit eigener Pause danach. Für Funktionen, die am HX Stomp mehrere Nachrichten brauchen. Alle Nachrichtenfelder darüber werden dann ignoriert.</td></tr>
+          <tr><td class="m">seqWhenStopped</td><td>Wird stattdessen gesendet, solange der Looper nachweislich steht — also nachdem E zuletzt „aus“ gemeldet hat. Nur A benutzt das.</td></tr>
         </tbody>
       </table>
     </div>
@@ -310,8 +324,8 @@
         <tbody>
           <tr class="dim"><td class="m">0, 32</td><td>—</td><td>Bank MSB / LSB — am HX Stomp unbenutzt, reserviert</td></tr>
           <tr><td class="m">1, 2</td><td>0–127</td><td>EXP 1 / EXP 2 Pedal</td></tr>
-          <tr><td class="m">49–53</td><td>—</td><td>emuliert FS1–FS5</td></tr>
-          <tr class="hl"><td class="m">60</td><td>0–63 Overdub<br>64–127 Record</td><td>Looper Record / Overdub</td></tr>
+          <tr class="hl"><td class="m">49–53</td><td>Wert egal</td><td>Emuliert einen <em>Tap</em> auf FS1–FS5. Am Gerät geprüft: der Wert wird ignoriert, jede Nachricht ist ein Tastendruck. Ein Halten — und damit das Löschen des Loops — lässt sich so nicht bauen.</td></tr>
+          <tr class="hl"><td class="m">60</td><td>0–63 Overdub<br>64–127 Record</td><td>Looper Record / Overdub. Über einen <em>gestoppten</em> Loop verwirft Record den alten.</td></tr>
           <tr class="hl"><td class="m">61</td><td>0–63 Stop<br>64–127 Play</td><td>Looper Play / Stop</td></tr>
           <tr class="hl"><td class="m">62</td><td>64–127</td><td>Looper Play Once</td></tr>
           <tr class="hl"><td class="m">63</td><td>64–127</td><td>Looper Undo / Redo</td></tr>
@@ -320,7 +334,7 @@
           <tr><td class="m">66</td><td>0–63 Full<br>64–127 Half</td><td>Looper Full / Half Speed</td></tr>
           <tr class="dim"><td class="m">67</td><td>—</td><td>reserviert. Auf Helix und Helix LT schaltet dieser CC den Looper-Block ein und aus — <strong>am HX Stomp nicht</strong>.</td></tr>
           <tr><td class="m">68</td><td>0–127</td><td>Tuner ein / aus</td></tr>
-          <tr><td class="m">69</td><td>0, 1, 2<br>8 nächstes<br>9 vorheriges</td><td>Snapshot wählen</td></tr>
+          <tr class="hl"><td class="m">69</td><td>0, 1, 2<br>8 nächstes<br>9 vorheriges</td><td>Snapshot wählen. Schaltet lückenlos und lässt den Looper in Ruhe, dessen Bypass-Zustand bewusst nicht in Snapshots gespeichert wird.</td></tr>
           <tr><td class="m">70</td><td>0–63 Bypass<br>64–127 On</td><td>All Bypass</td></tr>
           <tr><td class="m">71–73, 75–77, 81</td><td>—</td><td>in 3.80 belegt: MODE-Switch, Preset vor/zurück, Play↔Edit-Ansicht, Parameter-Knobs 1–3, Page Left/Right. Die exakte Einzelzuordnung habe ich nicht aufgeschlüsselt.</td></tr>
           <tr class="dim"><td class="m">3, 54–59, 74, 78, 79</td><td>—</td><td>reserviert für zukünftige Verwendung</td></tr>
@@ -330,7 +344,7 @@
 
     <div class="callout">
       <span class="tag">Es gibt kein Clear</span>
-      <p>Für <strong>Loop löschen / zurücksetzen existiert kein CC</strong> — weder in der Tabelle oben noch in der <code>HX Looper</code>-Funktionsliste des Command Center. Auf der Hardware ist Löschen „Footswitch halten, während gestoppt“, und ein CC ist ein Zeitpunkt, kein Halten. Auch die Footswitch-Emulation über CC 49–53 sendet vermutlich nur einen Tap.</p>
+      <p>Für <strong>Loop löschen / zurücksetzen existiert kein CC</strong> — weder in der Tabelle oben noch in der <code>HX Looper</code>-Funktionsliste des Command Center. Auf der Hardware ist Löschen „Footswitch halten, während gestoppt“, und ein CC ist ein Zeitpunkt, kein Halten. Die Footswitch-Emulation über CC 49–53 hilft nicht: am Gerät bestätigt, sie sendet nur einen Tap. Wie diese Bridge das umgeht, steht weiter oben.</p>
       <p style="margin-top:12px"><strong>CC 64 kollidiert außerdem</strong> mit dem MIDI-Standard für Sustain-Pedale. Hier unkritisch, weil die Bridge der einzige Sender ist — aber wenn du ein Keyboard mitlaufen lässt, tappt dessen Sustain-Pedal das Tempo.</p>
     </div>
   </section>

@@ -24,6 +24,12 @@ static const char* NAMES[5] = {"A", "B", "C", "D", "E"};
 static uint32_t lastEffectAt = 0;
 static uint32_t lastPresetAt[4] = {0, 0, 0, 0};
 static Tristate driveState = Tristate::Unknown;
+/// True while the last thing we told the HX Stomp was "stop". Only switch E can
+/// establish this, because only E carries a state the pedal itself tracks -- which
+/// makes it the one thing we know for certain about the looper. Switch A uses it to
+/// start a new loop instead of stepping the cycle, and that is what stands in for
+/// the delete command the HX Stomp does not have.
+static bool looperStopped = false;
 static bool errored = false;
 
 void setup() {
@@ -67,7 +73,10 @@ static void handle(const SwitchEvent& e) {
     const Tristate state = e.index == 4 ? driveState : Tristate::Unknown;
 
     char desc[48];
-    midi::fire(e.index, state, desc, sizeof(desc));
+    midi::fire(e.index, state, looperStopped, desc, sizeof(desc));
+
+    if (e.index == 0) looperStopped = false;                    // A set it running
+    if (e.index == 4) looperStopped = state == Tristate::Off;   // E stopped/started
 
     const SwitchConfig& c = SWITCHES[e.index];
     led::setSwitchColor(state == Tristate::Off ? c.colorOff : c.color);

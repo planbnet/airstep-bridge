@@ -74,11 +74,11 @@ GPIO11** with a jumper. The firmware then reads back its own output and hexdumps
 on every press:
 
 ```
-[A] preset 0 -> CC 61 = 127 ch 1
-      loopback: B0 3D 7F
+[A] preset 0 -> CC 49 = 127 ch 1
+      loopback: B0 31 7F
 ```
 
-`B0` is CC on channel 1, `3D` is 61, `7F` is 127. Set the pin back to `-1` for
+`B0` is CC on channel 1, `31` is 49, `7F` is 127. Set the pin back to `-1` for
 normal operation.
 
 ## Usage
@@ -113,26 +113,43 @@ Per switch you can configure message type (Note / CC / Program Change), number a
 channel in the `SWITCHES` table in [config.h](src/config.h) — the compile-time
 equivalent of the Swift app's settings screen.
 
-The default mapping aims at the HX Stomp's 1 Switch Looper, all on channel 1:
+The default mapping drives the HX Stomp's 1 Switch Looper, all on channel 1:
 
 | Switch | Sends | Effect |
 |---|---|---|
-| A | CC 60 = 127 | record |
-| B | CC 60 = 0 | overdub |
-| C | CC 62 = 127 | play once |
-| D | CC 63 = 127 | undo / redo |
+| A | CC 49 = 127 | record / stop / overdub — taps the footswitch the block sits on |
+| A *(after a stop)* | CC 60 = 127 | starts a new loop, discarding the old one |
+| B | CC 63 = 127 | undo / redo |
+| C | CC 69 = 8 | next snapshot |
+| D | CC 62 = 127 | play once |
 | E | CC 61 = 127 / 0 | play / stop, following the pedal's state |
 
-A and B share CC 60 and differ only in value — that is how the CC distinguishes
-record from overdub, and why `SwitchConfig` carries a `value` field at all.
+Two things here are not obvious.
 
-CC numbers are from the HX Stomp 3.80 Owner's Manual, p. 65–66. Note that **there
-is no CC for clearing the loop**, and that CC 67, which toggles the looper block on
-a full Helix, is reserved and does nothing here. [doc/midi.html](doc/midi.html) has
-the full table, the Program Change mapping, and two errata in the Line 6 manual.
+**A taps a footswitch instead of sending a looper CC.** None of the looper CCs can
+cycle: CC 60 encodes the action in the value, so 127 always means "record" and it
+never stops. Tapping the footswitch the block sits on hands the Record → Play →
+Overdub cycle back to the HX Stomp, which is the only party that knows what state
+the looper is in. This costs nothing, because a looper block cannot be added
+without assigning it to a footswitch in the first place. Point A at CC 50 or CC 51
+if you put the block on a different switch.
 
-The mapping is documented but **not yet verified against hardware** — the MIDI
-interface board had not arrived when this was written.
+**There is no clear-loop command, so deleting is not a button.** Clearing is
+press-and-hold on the hardware, and CC 49–53 emulate a tap only — verified on the
+unit, where three messages with values 0, 127 and 127 advanced the looper exactly
+three steps, so the value is ignored and a hold cannot be expressed. Instead, the
+bridge uses the one thing it knows for certain: switch E carries a state the pedal
+itself tracks, so after a stop via E, A starts a new loop rather than advancing the
+cycle. Recording over a stopped loop discards it, so deleting becomes what already
+happens when you record again.
+
+Both share one limitation with switch E: stop the looper from the HX Stomp's own
+controls and the bridge does not hear about it, so one press goes to the wrong
+place before things line up again.
+
+CC numbers are from the HX Stomp 3.80 Owner's Manual, p. 65–66.
+[doc/midi.html](doc/midi.html) has the full table, the Program Change mapping, and
+two errata in the Line 6 manual.
 
 ### Not USB
 
