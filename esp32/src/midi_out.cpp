@@ -39,13 +39,22 @@ static void raw3(uint8_t status, uint8_t a, uint8_t b) {
     port.write(buf, 3);
 }
 
+static uint8_t channelOf(uint8_t channel) {
+    return (channel < 1 ? 1 : (channel > 16 ? 16 : channel)) - 1;
+}
+
+void program(uint8_t number, uint8_t channel) {
+    raw2(0xC0 | channelOf(channel), number > 127 ? 127 : number);
+    port.flush();
+}
+
 void fire(uint8_t index, Tristate state, bool looperStopped, char* desc,
           size_t descCap) {
     if (index >= 5) { snprintf(desc, descCap, "?"); return; }
     const SwitchConfig& c = SWITCHES[index];
     if (!c.enabled) { snprintf(desc, descCap, "disabled"); return; }
 
-    const uint8_t chan = (c.channel < 1 ? 1 : (c.channel > 16 ? 16 : c.channel)) - 1;
+    const uint8_t chan = channelOf(c.channel);
 
     // A stopped looper takes the alternative sequence where one is configured.
     const MidiStep* seq = c.seq;

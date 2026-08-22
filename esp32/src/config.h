@@ -102,7 +102,30 @@ struct SwitchConfig {
     /// switch E last reported "off". Only switch A uses this.
     const MidiStep* seqWhenStopped;
     uint8_t seqWhenStoppedLen;
+    /// Program change sent by the *very first* press after power-up, in place of
+    /// this switch's normal message: it puts the HX Stomp on the preset the rig
+    /// lives in before anything else happens. NO_PRESET leaves the switch alone.
+    ///
+    /// It is per switch, so which preset you land on depends on which one you step
+    /// on first -- one switch can mean "take me to the looper", another "take me to
+    /// the clean rig". Only the first press does this; the rest behave normally.
+    uint8_t initialPreset;
 };
+
+static constexpr uint8_t NO_PRESET = 0xFF;
+
+/// HX Stomp preset numbering: 42 banks of three, mapped 1:1 onto program changes
+/// 0..125 with no bank select at all. Bank b (1-based) with slot A/B/C is
+/// (b - 1) * 3 + 0/1/2. Set Global Settings > Displays > Preset Number to 000-125
+/// and the display shows exactly this number.
+static constexpr uint8_t preset(uint8_t bank, uint8_t slot) {
+    return (bank - 1) * 3 + slot;
+}
+static constexpr uint8_t SLOT_A = 0, SLOT_B = 1, SLOT_C = 2;
+
+/// The preset holding the looper block. Requires MIDI PC Rx to be on, under
+/// Global Settings > MIDI/Tempo.
+static constexpr uint8_t LOOPER_PRESET = preset(36, SLOT_B);  // 36B = PC 106
 
 // HX Stomp looper CCs, from the "MIDI CC" table on p. 65-66 of the HX Stomp 3.80
 // Owner's Manual (identical in 2.65). Note that several of these encode the action
@@ -179,20 +202,24 @@ static constexpr MidiStep RESTART_SEQ[] = {
 // indicator.
 //
 // Fields: enabled, kind, number, channel, value, followToggle, splitToggle,
-//         offNumber, color, colorOff, seq, seqLen, seqWhenStopped, len.
+//         offNumber, color, colorOff, seq, seqLen, seqWhenStopped, len,
+//         initialPreset.
 static constexpr SwitchConfig SWITCHES[5] = {
     // A: record / stop / overdub -- the native cycle, via a footswitch tap.
     {true, MsgKind::CC, CC_FS1, 1, 127, false, false, 0, COL_GREEN, COL_GREEN, nullptr, 0,
-     RESTART_SEQ, 1},
+     RESTART_SEQ, 1, LOOPER_PRESET},
     // B: undo / redo the last overdub.
-    {true, MsgKind::CC, CC_LOOPER_UNDO, 1, 127, false, false, 0, COL_CYAN, COL_CYAN, nullptr, 0, nullptr, 0},
+    {true, MsgKind::CC, CC_LOOPER_UNDO, 1, 127, false, false, 0, COL_CYAN, COL_CYAN, nullptr, 0, nullptr, 0,
+     LOOPER_PRESET},
     // C: step to the next snapshot. Snapshots switch gaplessly and leave the looper
     // alone -- its bypass state is deliberately not snapshot-controlled -- so a loop
     // keeps playing while the sound around it changes.
     {true, MsgKind::CC, CC_SNAPSHOT, 1, SNAPSHOT_NEXT, false, false, 0, COL_BLUE,
-     COL_BLUE, nullptr, 0, nullptr, 0},
+     COL_BLUE, nullptr, 0, nullptr, 0, LOOPER_PRESET},
     // D: play the loop exactly once, then stop.
-    {true, MsgKind::CC, CC_LOOPER_ONCE, 1, 127, false, false, 0, COL_MAGENTA, COL_MAGENTA, nullptr, 0, nullptr, 0},
+    {true, MsgKind::CC, CC_LOOPER_ONCE, 1, 127, false, false, 0, COL_MAGENTA, COL_MAGENTA, nullptr, 0, nullptr, 0,
+     LOOPER_PRESET},
     // E: play / stop, following the pedal's own on/off state (127 = play).
-    {true, MsgKind::CC, CC_LOOPER_PLAY, 1, 127, true, false, 0, COL_AMBER, 0x301400, nullptr, 0, nullptr, 0},
+    {true, MsgKind::CC, CC_LOOPER_PLAY, 1, 127, true, false, 0, COL_AMBER, 0x301400, nullptr, 0, nullptr, 0,
+     LOOPER_PRESET},
 };

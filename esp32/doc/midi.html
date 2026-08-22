@@ -219,6 +219,17 @@
   </section>
 
   <section>
+    <h2>Der erste Tritt</h2>
+    <p>Nach dem Einschalten sendet der <strong>erste</strong> Tastendruck — egal welcher — nicht seine normale Nachricht, sondern einen Program Change auf das Preset, in dem der Looper liegt. Ab dem zweiten verhält sich alles normal.</p>
+    <p>Das ist pro Switch hinterlegt, also bestimmt der zuerst getretene Switch, wo du landest. Derzeit steht überall <code>36B</code>; mit unterschiedlichen Werten wird aus einem Switch „bring mich zum Looper“ und aus einem anderen „bring mich zum cleanen Sound“.</p>
+    <div class="note">
+      <span class="tag">An den Boot gebunden, nicht an die Verbindung</span>
+      <p>Bewusst so: bei einem kurzen Funkaussetzer mitten im Stück würde sonst der nächste Tritt unvermittelt das Preset wechseln. So passiert es genau einmal, beim Einschalten.</p>
+    </div>
+    <p style="margin-top:22px">Setzt voraus, dass <code>MIDI PC Rx</code> unter <code>Global Settings → MIDI/Tempo</code> auf <code>MIDI</code> oder <code>MIDI+USB</code> steht — für die CCs war das egal.</p>
+  </section>
+
+  <section>
     <h2>Switch E hält einen Zustand</h2>
     <p>A bis D sind reine Trigger. E ist der Drive-Toggle des Pedals, und diesen An/Aus-Zustand verwaltet das <strong>Pedal selbst</strong> — inklusive seiner eigenen Footswitch-LED. Deshalb kann E als einziger Switch <code>127</code> und <code>0</code> senden und damit Play und Stop ansteuern: die LED am AIRSTEP wird zur Wiedergabeanzeige.</p>
   </section>
@@ -308,6 +319,7 @@
           <tr><td class="m">color</td><td>Status-LED nach dem Druck, <code>0xRRGGBB</code></td></tr>
           <tr><td class="m">colorOff</td><td>Farbe, wenn das Pedal „aus“ meldet (nur E)</td></tr>
           <tr><td class="m">seq<br>seqLen</td><td>Statt einer einzelnen Nachricht eine ganze Folge senden, jede mit eigener Pause danach. Für Funktionen, die am HX Stomp mehrere Nachrichten brauchen. Alle Nachrichtenfelder darüber werden dann ignoriert.</td></tr>
+          <tr><td class="m">initialPreset</td><td>Program Change, den der allererste Tritt nach dem Einschalten sendet, anstelle der normalen Nachricht. <code>NO_PRESET</code> schaltet das für diesen Switch ab. Die Nummer schreibt man als <code>preset(36, SLOT_B)</code> statt als 106.</td></tr>
           <tr><td class="m">seqWhenStopped</td><td>Wird stattdessen gesendet, solange der Looper nachweislich steht — also nachdem E zuletzt „aus“ gemeldet hat. Nur A benutzt das.</td></tr>
         </tbody>
       </table>
@@ -365,7 +377,8 @@
         </tbody>
       </table>
     </div>
-    <p style="margin-top:18px">Stell <code>Global Settings → Displays → Preset Number</code> auf <code>000–125</code>, dann <em>ist</em> die angezeigte Nummer die PC-Nummer. Die Play-Ansicht zeigt ohnehin das live gültige <code>PC:xxx</code>.</p>
+    <p style="margin-top:18px">In der Konfiguration schreibt man das nicht als Zahl, sondern als <code>preset(36, SLOT_B)</code> — das rechnet <code>(36−1)×3+1 = 106</code> beim Kompilieren aus.</p>
+    <p>Stell <code>Global Settings → Displays → Preset Number</code> auf <code>000–125</code>, dann <em>ist</em> die angezeigte Nummer die PC-Nummer. Die Play-Ansicht zeigt ohnehin das live gültige <code>PC:xxx</code>.</p>
   </section>
 
   <section>

@@ -24,4 +24,8 @@ void begin();
 /// Writes a human-readable description of what was sent into `desc`, for the log.
 void fire(uint8_t index, Tristate state, bool looperStopped, char* desc, size_t descCap);
 
+/// Sends a bare program change. Used for the initial preset selection, which is
+/// not tied to any switch's configured message.
+void program(uint8_t number, uint8_t channel);
+
 }  // namespace midi

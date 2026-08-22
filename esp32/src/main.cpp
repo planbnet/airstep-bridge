@@ -30,6 +30,11 @@ static Tristate driveState = Tristate::Unknown;
 /// start a new loop instead of stepping the cycle, and that is what stands in for
 /// the delete command the HX Stomp does not have.
 static bool looperStopped = false;
+/// Spent by the first footswitch press after power-up, which selects the preset the
+/// rig lives in instead of doing its normal job. Scoped to boot rather than to the
+/// BLE connection on purpose: a brief radio dropout mid-song must not turn the next
+/// press into a surprise preset jump.
+static bool firstPressPending = true;
 static bool errored = false;
 
 void setup() {
@@ -70,6 +75,20 @@ static void handle(const SwitchEvent& e) {
         if (e.state != Tristate::Unknown) driveState = e.state;
     }
 
+    const SwitchConfig& cfg = SWITCHES[e.index];
+
+    if (firstPressPending) {
+        firstPressPending = false;
+        if (cfg.initialPreset != NO_PRESET) {
+            midi::program(cfg.initialPreset, cfg.channel);
+            led::setSwitchColor(cfg.color);
+            led::blip();
+            Serial.printf("[%s] first press -> Program %u ch %u\n", NAMES[e.index],
+                          cfg.initialPreset, cfg.channel);
+            return;
+        }
+    }
+
     const Tristate state = e.index == 4 ? driveState : Tristate::Unknown;
 
     char desc[48];
@@ -78,8 +97,7 @@ static void handle(const SwitchEvent& e) {
     if (e.index == 0) looperStopped = false;                    // A set it running
     if (e.index == 4) looperStopped = state == Tristate::Off;   // E stopped/started
 
-    const SwitchConfig& c = SWITCHES[e.index];
-    led::setSwitchColor(state == Tristate::Off ? c.colorOff : c.color);
+    led::setSwitchColor(state == Tristate::Off ? cfg.colorOff : cfg.color);
     led::blip();
 
     if (e.index == 4)

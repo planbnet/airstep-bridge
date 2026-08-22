@@ -143,7 +143,14 @@ itself tracks, so after a stop via E, A starts a new loop rather than advancing 
 cycle. Recording over a stopped loop discards it, so deleting becomes what already
 happens when you record again.
 
-Both share one limitation with switch E: stop the looper from the HX Stomp's own
+**The first press after power-up selects a preset instead.** Whichever switch you
+step on first sends a program change to the preset the looper lives in, and only
+then does the rig behave normally. It is per switch, so different switches can lead
+to different presets. Scoped to boot rather than to the BLE connection on purpose: a
+brief radio dropout mid-song must not turn the next press into a surprise preset
+jump. Needs `MIDI PC Rx` on, under *Global Settings → MIDI/Tempo*.
+
+Both the cycle and the restart share one limitation with switch E: stop the looper from the HX Stomp's own
 controls and the bridge does not hear about it, so one press goes to the wrong
 place before things line up again.
 
