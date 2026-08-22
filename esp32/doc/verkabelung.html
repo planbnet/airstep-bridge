@@ -187,6 +187,30 @@
     border-top: 1px solid var(--rule);
     font-size: 14.5px; color: var(--ink-mute);
   }
+
+  /* Print: force the light palette regardless of the rendering context, and keep
+     figures, tables and callouts from being sliced across a page break. */
+  @media print {
+    :root {
+      --paper: #ffffff;  --card: #ffffff;
+      --ink: #101a18;    --ink-soft: #3b4a47;
+      --ink-mute: #5f6e69;
+      --rule: #d2dad7;   --rule-firm: #9fada8;
+      --accent: #0a6446; --accent-bg: #eef5f2;
+      --wire-pwr: #b62d22; --wire-sig: #a86a00;
+      --warn-bg: #fbeae7;  --warn-rule: #e0b0a8;
+    }
+    body { padding: 0; font-size: 10.5pt; line-height: 1.5; }
+    .wrap, .bleed, figcaption { max-width: none; }
+    header { padding: 0 0 18pt; }
+    h1 { font-size: 24pt; }
+    section { margin-top: 24pt; }
+    h1, h2, h3 { break-after: avoid; }
+    figure, .figbox, .note, .callout, pre, tr, li { break-inside: avoid; }
+    thead { display: table-header-group; }
+    a { color: inherit; text-decoration: none; }
+    footer { margin-top: 24pt; }
+  }
 </style>
 
 <div class="wrap">
@@ -210,7 +234,8 @@
       <rect x="26" y="52" width="196" height="276" rx="7" fill="none" stroke="currentColor" stroke-width="1.6"/>
       <rect x="26" y="52" width="196" height="34" rx="7" fill="currentColor" opacity="0.07"/>
       <text x="124" y="74" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="13.5" font-weight="700" fill="currentColor">ESP32-H2-DevKitM-1</text>
-      <text x="124" y="316" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="currentColor" opacity="0.55">Beschriftung wie aufgedruckt</text>
+      <text x="124" y="310" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="currentColor" opacity="0.55">Beschriftung wie</text>
+      <text x="124" y="324" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="currentColor" opacity="0.55">auf der Platine</text>
 
       <!-- ESP32 pins -->
       <circle cx="222" cy="130" r="5.5" fill="var(--wire-pwr)"/>

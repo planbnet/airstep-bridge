@@ -261,6 +261,18 @@ src/status_led.*            WS2812 status display
 Decoding runs on the NimBLE host task and finished events go through a queue, so
 MIDI and the LED are only ever touched from `loop()`.
 
+## Printing the docs
+
+Both pages carry a print stylesheet, so a browser renders them straight to a usable
+PDF — light palette regardless of theme, and no figures or table rows sliced across
+a page break:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --no-pdf-header-footer --print-to-pdf=verkabelung.pdf file://$PWD/doc/verkabelung.html
+```
+
+The PDFs themselves are not checked in; they are generated from the HTML.
+
 ## Not implemented, on purpose
 
 - MIDI IN from the HX Stomp back to the pedal.
