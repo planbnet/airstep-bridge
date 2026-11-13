@@ -1,9 +1,10 @@
 #include <Arduino.h>
 
+#include "ble_midi.h"
+#include "ble_server.h"
 #include "ble_spark_emulator.h"
 #include "config.h"
 #include "midi_out.h"
-#include "spark_decode.h"
 #include "status_led.h"
 
 // AIRSTEP Spk Edition -> ESP32-H2 -> 5-pin DIN MIDI -> Line 6 HX Stomp.
@@ -16,6 +17,12 @@
 // Only Mode 1 is supported (power the pedal on while holding footswitch A).
 // The other modes report *relative* changes, so a switch emits a different
 // value on every press and cannot be mapped to a stable trigger.
+//
+// With BLE_MIDI_ENABLED the same radio also serves standard BLE-MIDI, so a
+// tablet or laptop can drive the HX Stomp through the same DIN cable -- a sheet
+// music app sending a Program Change as you open a song is the case this was
+// built for. The two roles are independent: either can be connected without the
+// other, and the pedal's half behaves exactly as it did before.
 //
 // Port of https://github.com/planbnet/airstep-bridge (macOS/iPadOS, Swift).
 
@@ -48,6 +55,14 @@ void setup() {
     midi::begin();
     Serial.printf("[midi] UART1 TX on GPIO%d, %lu baud\n", MIDI_TX_PIN,
                   (unsigned long)MIDI_BAUD);
+
+#if BLE_MIDI_ENABLED
+    // Everything the bridge sends to the HX Stomp is also offered to the MIDI
+    // host, so a footswitch can turn the page in a sheet music app while it
+    // drives the looper. Messages arriving *from* the host are forwarded with
+    // midi::forward(), which skips the tap and cannot echo back.
+    if (MIRROR_PRESSES_TO_BLE_MIDI) midi::setTap(blemidi::send);
+#endif
 
     if (!ble::begin()) {
         errored = true;
@@ -116,14 +131,28 @@ void loop() {
     }
 
     static bool wasConnected = false;
-    const bool isConnected = ble::connected();
+    const bool isConnected = spark::connected();
     if (isConnected != wasConnected) {
         wasConnected = isConnected;
         led::setState(isConnected ? led::State::Connected : led::State::Waiting);
     }
 
     SwitchEvent e;
-    while (ble::pop(e)) handle(e);
+    while (spark::pop(e)) handle(e);
+
+    // Moves queued MIDI into the UART. Both the pedal and the MIDI host feed
+    // that queue, and this is the only place the port is written.
+    midi::pump();
+
+    // A full output buffer means more MIDI arrived than 31250 baud can carry,
+    // which is worth knowing about but not worth a line per message.
+    static uint32_t lastDrops = 0;
+    const uint32_t d = midi::drops();
+    if (d != lastDrops) {
+        Serial.printf("[midi] output buffer full, %lu messages dropped\n",
+                      (unsigned long)d);
+        lastDrops = d;
+    }
 
     led::tick();
     delay(2);

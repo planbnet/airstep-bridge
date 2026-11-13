@@ -9,19 +9,91 @@ namespace midi {
 
 static HardwareSerial& port = Serial1;
 
-void begin() {
-    // RX is normally unused: the bridge is a one-way street, pedal -> HX Stomp.
-    // It is only wired up for the loopback self-test.
-    port.begin(MIDI_BAUD, SERIAL_8N1, MIDI_LOOPBACK_RX_PIN, MIDI_TX_PIN);
+// ---------------------------------------------------------------- ring buffer
+
+static uint8_t ring[MIDI_TX_BUFFER];
+static size_t head = 0;  // next write
+static size_t tail = 0;  // next read
+static SemaphoreHandle_t lock = nullptr;
+static uint32_t dropped = 0;
+static Tap tap = nullptr;
+
+static inline size_t usedLocked() {
+    return (head + MIDI_TX_BUFFER - tail) % MIDI_TX_BUFFER;
 }
 
+/// Appends a whole message or nothing. Partial writes would put a truncated
+/// message on the wire, which is worse than a dropped one: the HX Stomp would
+/// read the next message's status byte as this one's missing data byte.
+static bool push(const uint8_t* bytes, size_t len) {
+    if (len == 0) return true;
+    xSemaphoreTake(lock, portMAX_DELAY);
+    if (MIDI_TX_BUFFER - 1 - usedLocked() < len) {
+        ++dropped;
+        xSemaphoreGive(lock);
+        return false;
+    }
+    for (size_t i = 0; i < len; ++i) {
+        ring[head] = bytes[i];
+        head = (head + 1) % MIDI_TX_BUFFER;
+    }
+    xSemaphoreGive(lock);
+    return true;
+}
+
+// ---------------------------------------------------------------- sequences
+
+// A configured sequence with a pause between its steps cannot block loop() any
+// more, so the remainder is held here and released by pump() as it comes due.
+// One sequence at a time: they are footswitch-triggered and a few milliseconds
+// long, and a press that lands mid-sequence is better off replacing it than
+// queueing behind it.
+static const MidiStep* pendingSteps = nullptr;
+static uint8_t pendingLen = 0;
+static uint8_t pendingNext = 0;
+static uint8_t pendingChan = 0;
+static uint32_t pendingDueAt = 0;
+
+static void emitStep(const MidiStep& st, uint8_t chan) {
+    if ((st.status & 0xF0) == 0xC0) {
+        const uint8_t buf[2] = {(uint8_t)(st.status | chan), st.d1};
+        emit(buf, 2);
+    } else {
+        const uint8_t buf[3] = {(uint8_t)(st.status | chan), st.d1, st.d2};
+        emit(buf, 3);
+    }
+}
+
+static void startSequence(const MidiStep* steps, uint8_t len, uint8_t chan) {
+    emitStep(steps[0], chan);
+    if (len > 1) {
+        pendingSteps = steps;
+        pendingLen = len;
+        pendingNext = 1;
+        pendingChan = chan;
+        pendingDueAt = millis() + steps[0].waitAfterMs;
+    } else {
+        pendingSteps = nullptr;
+    }
+}
+
+static void releaseDueSteps() {
+    while (pendingSteps && (int32_t)(millis() - pendingDueAt) >= 0) {
+        const MidiStep& st = pendingSteps[pendingNext];
+        emitStep(st, pendingChan);
+        pendingDueAt = millis() + st.waitAfterMs;
+        if (++pendingNext >= pendingLen) pendingSteps = nullptr;
+    }
+}
+
+// ---------------------------------------------------------------- loopback
+
 /// Reads back whatever the loopback jumper returned and hexdumps it, so the
-/// bytes on the wire can be checked against the message that was meant to go out.
+/// bytes on the wire can be checked against the message that was meant to go
+/// out. Output is no longer tied to a single press -- the UART drains
+/// asynchronously now -- so this reports whatever has arrived since last time.
 static void drainLoopback() {
-    if (MIDI_LOOPBACK_RX_PIN < 0) return;
-    // 3 bytes at 31250 baud take ~1 ms; give the last one time to land.
-    delay(3);
-    if (!port.available()) { Serial.println("      loopback: nothing received"); return; }
+    if (MIDI_LOOPBACK_RX_PIN < 0 || !port.available()) return;
     char hex[64];
     size_t n = 0;
     while (port.available() && n < sizeof(hex) - 4)
@@ -29,23 +101,57 @@ static void drainLoopback() {
     Serial.printf("      loopback: %s\n", hex);
 }
 
-static void raw2(uint8_t status, uint8_t a) {
-    const uint8_t buf[2] = {status, a};
-    port.write(buf, 2);
+// ---------------------------------------------------------------- public API
+
+void begin() {
+    lock = xSemaphoreCreateMutex();
+    // RX is normally unused: the bridge is a one-way street, pedal -> HX Stomp.
+    // It is only wired up for the loopback self-test.
+    port.begin(MIDI_BAUD, SERIAL_8N1, MIDI_LOOPBACK_RX_PIN, MIDI_TX_PIN);
 }
 
-static void raw3(uint8_t status, uint8_t a, uint8_t b) {
-    const uint8_t buf[3] = {status, a, b};
-    port.write(buf, 3);
+void setTap(Tap t) { tap = t; }
+
+bool emit(const uint8_t* bytes, size_t len) {
+    if (tap) tap(bytes, len);
+    return push(bytes, len);
 }
+
+bool forward(const uint8_t* bytes, size_t len) { return push(bytes, len); }
+
+void pump() {
+    releaseDueSteps();
+
+    xSemaphoreTake(lock, portMAX_DELAY);
+    // availableForWrite() keeps this from blocking: at 31250 baud a byte takes
+    // 320 us, and stalling loop() on a full FIFO would stall the status LED and
+    // the event queue with it.
+    while (tail != head && port.availableForWrite() > 0) {
+        port.write(ring[tail]);
+        tail = (tail + 1) % MIDI_TX_BUFFER;
+    }
+    xSemaphoreGive(lock);
+
+    drainLoopback();
+}
+
+size_t pending() {
+    xSemaphoreTake(lock, portMAX_DELAY);
+    const size_t n = usedLocked();
+    xSemaphoreGive(lock);
+    return n;
+}
+
+uint32_t drops() { return dropped; }
 
 static uint8_t channelOf(uint8_t channel) {
     return (channel < 1 ? 1 : (channel > 16 ? 16 : channel)) - 1;
 }
 
 void program(uint8_t number, uint8_t channel) {
-    raw2(0xC0 | channelOf(channel), number > 127 ? 127 : number);
-    port.flush();
+    const uint8_t buf[2] = {(uint8_t)(0xC0 | channelOf(channel)),
+                            (uint8_t)(number > 127 ? 127 : number)};
+    emit(buf, 2);
 }
 
 void fire(uint8_t index, Tristate state, bool looperStopped, char* desc,
@@ -66,20 +172,9 @@ void fire(uint8_t index, Tristate state, bool looperStopped, char* desc,
         seqTag = " (new loop)";
     }
 
-    // A sequence replaces the single message entirely. The pauses block the main
-    // loop, which is fine at these lengths: BLE runs on its own task so nothing is
-    // dropped, presses queue up behind it, and the only visible cost is the status
-    // LED updating a fraction of a second late.
+    // A sequence replaces the single message entirely.
     if (seq != nullptr && seqLen > 0) {
-        for (uint8_t i = 0; i < seqLen; ++i) {
-            const MidiStep& st = seq[i];
-            if ((st.status & 0xF0) == 0xC0)
-                raw2(st.status | chan, st.d1);
-            else
-                raw3(st.status | chan, st.d1, st.d2);
-            port.flush();
-            if (st.waitAfterMs) delay(st.waitAfterMs);
-        }
+        startSequence(seq, seqLen, chan);
         if (seqLen == 1 && (seq[0].status & 0xF0) == 0xB0)
             snprintf(desc, descCap, "CC %u = %u ch %u%s", seq[0].d1, seq[0].d2, chan + 1,
                      seqTag);
@@ -97,31 +192,32 @@ void fire(uint8_t index, Tristate state, bool looperStopped, char* desc,
     const char* tag = c.splitToggle ? (isOff ? " (off)" : " (on)") : "";
 
     switch (c.kind) {
-        case MsgKind::Note:
-            raw3(0x90 | chan, n, 0x7F);
-            raw3(0x80 | chan, n, 0x00);
+        case MsgKind::Note: {
+            const uint8_t on[3] = {(uint8_t)(0x90 | chan), n, 0x7F};
+            const uint8_t off[3] = {(uint8_t)(0x80 | chan), n, 0x00};
+            emit(on, 3);
+            emit(off, 3);
             snprintf(desc, descCap, "Note %u ch %u%s", n, chan + 1, tag);
             break;
+        }
 
         case MsgKind::CC: {
             const uint8_t v = (c.followToggle && !c.splitToggle)
                                   ? (state == Tristate::Off ? 0 : 127)
                                   : c.value;
-            raw3(0xB0 | chan, n, v);
+            const uint8_t buf[3] = {(uint8_t)(0xB0 | chan), n, v};
+            emit(buf, 3);
             snprintf(desc, descCap, "CC %u = %u ch %u%s", n, v, chan + 1, tag);
             break;
         }
 
-        case MsgKind::Program:
-            raw2(0xC0 | chan, n);
+        case MsgKind::Program: {
+            const uint8_t buf[2] = {(uint8_t)(0xC0 | chan), n};
+            emit(buf, 2);
             snprintf(desc, descCap, "Program %u ch %u%s", n, chan + 1, tag);
             break;
+        }
     }
-
-    // Serial MIDI is 320 us per byte; flushing keeps the "sent" log line and the
-    // LED blip honest rather than reporting bytes still sitting in the FIFO.
-    port.flush();
-    drainLoopback();
 }
 
 }  // namespace midi

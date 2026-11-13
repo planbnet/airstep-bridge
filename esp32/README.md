@@ -8,6 +8,11 @@ a Line 6 HX Stomp.
 
 No computer in the signal path, no Bluetooth HID pairing, no Spark amp.
 
+The same radio also serves standard **BLE-MIDI**, so the bridge doubles as an
+ordinary wireless MIDI interface: a tablet running sheet music software can drive
+the HX Stomp through the same DIN cable, and the preset follows the setlist. See
+[Generic MIDI bridge](#generic-midi-bridge).
+
 ## Hardware
 
 | | |
@@ -68,6 +73,13 @@ the host with no hardware at all:
 c++ -std=c++17 -I src test/host_decode.cpp src/spark_decode.cpp -o /tmp/t && /tmp/t
 ```
 
+So does the BLE-MIDI packet parser — timestamps that look like status bytes,
+running status, SysEx split across packets:
+
+```bash
+c++ -std=c++17 -I src test/host_blemidi.cpp src/ble_midi_parse.cpp -o /tmp/m && /tmp/m
+```
+
 To check the actual bytes on the wire before you have anything to plug into, set
 `MIDI_LOOPBACK_RX_PIN` in [config.h](src/config.h) to `11` and bridge **GPIO10 to
 GPIO11** with a jumper. The firmware then reads back its own output and hexdumps it
@@ -90,6 +102,8 @@ normal operation.
 4. The LED goes solid when the pedal connects.
 5. Set the HX Stomp to listen on the right MIDI channel
    (*Global Settings → MIDI/Tempo*) and add a looper block.
+6. Optional: on an iPad or Mac, open the app's Bluetooth MIDI picker and connect
+   to **Spark 40 BLE**. The pedal does not have to be disconnected for this.
 
 The pedal reconnects on its own after an ESP32 restart or a brief dropout. There is
 no pairing state on either side.
@@ -106,6 +120,9 @@ no pairing state on either side.
 
 Switch colours are in [config.h](src/config.h): A green, B cyan, C blue, D magenta,
 E amber (dimmed while the pedal reports "off"). Red is reserved for errors.
+
+The LED tracks the *pedal* link only. A MIDI host connecting or leaving does not
+change it, so a blinking LED still means exactly one thing: the pedal is not here.
 
 ## MIDI mapping
 
@@ -163,8 +180,11 @@ two errata in the Line 6 manual.
 The HX Stomp's USB port is a device port, so reaching it over USB would mean being
 a USB *host*. The ESP32-H2 cannot: its USB is a fixed-function USB-Serial/JTAG
 controller with no OTG and no TinyUSB, so it cannot even present itself as a USB
-MIDI device. DIN MIDI is the only route from this chip — an ESP32-S3 with the
-`usb_host` stack could do it, at considerably more effort.
+MIDI device. DIN MIDI is the only wired route from this chip — an ESP32-S3 with
+the `usb_host` stack could do it, at considerably more effort.
+
+This is also why a tablet reaches the bridge over BLE-MIDI rather than a cable:
+there is no cable it could use. It turns out to be the better end of the deal.
 
 ### Switch E is different
 
@@ -179,6 +199,122 @@ for it:
 Either way the pedal's LED becomes a status indicator for whatever E controls. The
 catch is that the state belongs to the pedal: change the same thing from the HX
 Stomp's own switches and the pedal's LED will be out of step until the next press.
+
+## Generic MIDI bridge
+
+Alongside the Spark emulation the ESP32 serves standard **BLE-MIDI** — "MIDI over
+Bluetooth Low Energy", Apple's specification as adopted by the MIDI Association,
+and what every commercial wireless MIDI dongle speaks. It appears in the iOS
+*Bluetooth MIDI Devices* sheet, in Audio MIDI Setup on a Mac, and in any app's
+MIDI port list. Whatever is sent to it goes out the same DIN cable.
+
+The case this was built for is sheet music software, which attaches MIDI to a
+score and sends it when the song opens — so the HX Stomp's preset follows the
+setlist instead of being wired into `LOOPER_PRESET`:
+
+| App | Where |
+|---|---|
+| forScore | per-score MIDI, as Program Change, Song Select or raw hex |
+| BandHelper / Set List Maker | MIDI presets, per song or per song part |
+| MobileSheetsPro | per-song MIDI with a selectable output port |
+
+Program Change, Control Change, Song Select, Note, pitch bend and SysEx all pass
+through. Running status and SysEx split across packets are handled; real-time
+messages are forwarded but not logged, because clock arrives 24 times a beat.
+
+Presses travel the other way too. With `MIRROR_PRESSES_TO_BLE_MIDI` every message
+the bridge sends the HX Stomp is also notified to the MIDI host, so a footswitch
+can turn the page in a sheet music app while it still drives the looper. Messages
+arriving *from* the host are never mirrored back to it.
+
+Set `BLE_MIDI_ENABLED` to 0 in [config.h](src/config.h) to leave the firmware
+exactly as it was.
+
+Verified on hardware with macOS as the host and the pedal connected at the same
+time:
+
+- The device appears in the Bluetooth MIDI window as `Spark 40 BLE`, connects,
+  negotiates MTU 255, subscribes, and survives macOS's opening 32-byte SysEx.
+- Program Change, Control Change and Song Select arrive and reach the HX Stomp
+  over DIN — a Program Change for the looper preset lands the unit on it.
+- The pedal connects alongside it: `[ble] connected ... (2 peers)`, with all five
+  switches decoding correctly and the first press still selecting the preset.
+- Presses mirror back: one press of B produced `CC 63 = 127` on the DIN port and
+  the same message on the Mac over BLE-MIDI.
+
+One operational quirk, which cost an hour of misdiagnosis and is not this
+firmware's doing: **macOS's Bluetooth MIDI session can go stale while the window
+still offers "Trennen"**, and MIDI then stops flowing in both directions with no
+disconnect on the device side. Clicking Trennen and then Verbinden restores it.
+Worth ruling out before suspecting the bridge. Note also that console output can
+lag a few seconds behind the event, so an empty log is not evidence of a lost
+message until it has had time to arrive.
+
+### Two peripherals, one radio
+
+The pedal and the MIDI host both connect as centrals and are both served at once.
+NimBLE allows three simultaneous connections by default, so that part needs no
+configuration at all.
+
+Advertising is the part that needed thought. A legacy advertisement carries 31
+bytes and the Spark identity already spends 21: flags (3), the complete local name
+`Spark 40 BLE` (14) and the 16-bit service UUID `FFC0` (4). The BLE-MIDI service
+UUID is 128-bit — the profile has no short UUID registered with the Bluetooth SIG
+— and needs 18 more. It does not fit.
+
+So one of them has to go in the **scan response**, which has its own 31 bytes.
+Which one is not a free choice, and the answer was settled on hardware:
+
+**CoreBluetooth does not match its scan filter against scan-response data.** With
+the name primary and the BLE-MIDI UUID in the scan response, macOS's Bluetooth
+MIDI window found nothing: `MIDIServer` opened a CoreBluetooth session, came up
+empty, and tore it down five seconds later, while the ESP32 never saw a
+connection attempt. An active scan does merge advertisement and scan response
+into one record for a device that *matched*, but the filter itself runs against
+the primary PDU alone. CoreBluetooth is also iOS's Bluetooth stack, so this rules
+the arrangement out for iPads just as much as for Macs.
+
+The default is therefore the other way round, switchable with
+`BLE_MIDI_UUID_IN_PRIMARY` in [config.h](src/config.h):
+
+| | primary advertisement | scan response |
+|---|---|---|
+| `1` (default) | flags, BLE-MIDI UUID, `FFC0` — 25 bytes | name — 14 bytes |
+| `0` | flags, name, `FFC0` — 21 bytes | BLE-MIDI UUID — 18 bytes |
+
+`FFC0` stays primary either way, so the pedal can still find its amp by service
+UUID; with the default it needs an active scan to read the name. Set the flag to
+`0` if the pedal ever fails to connect — between the two halves, the MIDI one is
+the one that can afford to lose. Both payload sizes are printed at boot.
+
+Two consequences worth knowing:
+
+- **The device shows up on the iPad as `Spark 40 BLE`**, because there is only one
+  advertised name to go around. Separate names per identity means extended
+  advertising with two advertising sets (`CONFIG_BT_NIMBLE_EXT_ADV`,
+  `CONFIG_BT_NIMBLE_MAX_EXT_ADV_INSTANCES=2`, instance 0 with
+  `setLegacyAdvertising(true)` so the BLE 4.x pedal can still see it). Enabling
+  that flag also removes `NimBLEAdvertising` from the library in favour of
+  `NimBLEExtAdvertising`, so it is a rewrite of
+  [ble_server.cpp](src/ble_server.cpp) rather than a switch to flip.
+- **NimBLE stops advertising on a successful connection and does not restart it.**
+  With two centrals that is fatal to whichever one is late: the pedal connects on
+  power-up and the tablet is left scanning a band we have gone quiet on.
+  [ble_server.cpp](src/ble_server.cpp) restarts advertising from `onConnect`
+  until `BLE_MAX_PEERS` is reached.
+
+### Sharing one UART
+
+Two sources feeding one 31250-baud port cannot write to it directly, so output
+goes through a ring buffer that `midi::pump()` drains from `loop()`. Messages are
+enqueued whole or dropped whole — a truncated message is worse than a missing one,
+because the HX Stomp would read the next message's status byte as this one's
+missing data byte. Drops are counted and reported.
+
+Nothing blocks any more: the `flush()` after every message and the `delay()`
+between sequence steps are gone, and a sequence's pauses are released by `pump()`
+as they come due. The loopback self-test reports whatever has arrived since the
+last poll rather than being tied to a single press.
 
 ## Protocol
 
@@ -249,12 +385,16 @@ mistaken for it.
 platformio.ini              pioarduino platform, board and USB CDC flags
 doc/verkabelung.html        wiring diagram, and why the 5V pin gets 3.3V
 doc/midi.html               MIDI mapping and the HX Stomp CC reference
-test/host_decode.cpp        decoder tests, run on the host
+test/host_decode.cpp        Spark decoder tests, run on the host
+test/host_blemidi.cpp       BLE-MIDI parser tests, run on the host
 src/config.h                pins, timing, per-switch MIDI mapping and LED colours
 src/main.cpp                setup/loop, debouncing, orchestration
-src/ble_spark_emulator.*    NimBLE GATT server, advertising, Spark impersonation
+src/ble_server.cpp          NimBLE stack, GATT server, dual advertising
+src/ble_spark_emulator.*    the Spark service: impersonation and press decoding
 src/spark_decode.*          frame reassembly, 7-bit unpacking, classification
-src/midi_out.*              UART serial MIDI
+src/ble_midi.*              the BLE-MIDI service: GATT glue and notifications
+src/ble_midi_parse.*        BLE-MIDI packet decoding and encoding
+src/midi_out.*              UART serial MIDI, ring buffer shared by both sources
 src/status_led.*            WS2812 status display
 ```
 
@@ -275,6 +415,15 @@ The PDFs themselves are not checked in; they are generated from the HTML.
 
 ## Not implemented, on purpose
 
-- MIDI IN from the HX Stomp back to the pedal.
+- MIDI IN from the HX Stomp. `Serial1` already has an RX pin plumbed for the
+  loopback test and GPIO11/12/22 are free, so the wiring is most of the work. It
+  would be worth having: with `MIDI PC Tx` on, the HX Stomp sends a Program Change
+  whenever you change preset on the unit, and forwarding that to the tablet would
+  let a sheet music app follow the rig instead of leading it. Note it would *not*
+  fix the looper caveat above — the Stomp transmits preset changes, not looper
+  state.
 - AIRSTEP modes 2 and 3 (relative values — see above).
+- Runtime configuration. The mapping is still compile-time, which a per-song setup
+  will eventually outgrow; the natural answer on this chip is SysEx over the
+  BLE-MIDI link that is now there, since the H2 has no Wi-Fi radio for a web UI.
 - Wi-Fi, OTA, web config. The H2 has no Wi-Fi radio to begin with.

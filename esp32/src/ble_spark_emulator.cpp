@@ -5,12 +5,11 @@
 
 #include "config.h"
 
-namespace ble {
+namespace spark {
 
-static NimBLEServer* server = nullptr;
 static QueueHandle_t queue = nullptr;
-static volatile bool linkUp = false;
 static FrameAssembler assembler;  // only ever touched from the NimBLE host task
+static uint16_t pedalHandle = BLE_HS_CONN_HANDLE_NONE;
 
 static void push(uint8_t index, Tristate state, const char* name) {
     SwitchEvent e{};
@@ -20,28 +19,20 @@ static void push(uint8_t index, Tristate state, const char* name) {
     xQueueSend(queue, &e, 0);
 }
 
-class ServerCallbacks : public NimBLEServerCallbacks {
-    void onConnect(NimBLEServer*, NimBLEConnInfo& info) override {
-        linkUp = true;
-        assembler.reset();
-        Serial.printf("[ble] connected: %s\n", info.getAddress().toString().c_str());
-    }
-
-    void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int reason) override {
-        linkUp = false;
-        assembler.reset();
-        // advertiseOnDisconnect(true) brings advertising back up for us, which is
-        // all the pedal needs to find us again on its own.
-        Serial.printf("[ble] disconnected (reason %d), advertising again\n", reason);
-    }
-
-    void onMTUChange(uint16_t mtu, NimBLEConnInfo&) override {
-        Serial.printf("[ble] MTU %u\n", mtu);
-    }
-};
+/// Whichever peer talks the Spark protocol is the pedal. With two centrals on
+/// one server the connection handle alone no longer identifies anyone, and the
+/// pedal announces itself twice over: it subscribes to FFC2 right after
+/// connecting, and it writes to FFC1 on the first press.
+static void claimPedal(NimBLEConnInfo& info) {
+    if (pedalHandle == info.getConnHandle()) return;
+    pedalHandle = info.getConnHandle();
+    assembler.reset();
+    Serial.printf("[spark] pedal is %s\n", info.getAddress().toString().c_str());
+}
 
 class WriteCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic* c, NimBLEConnInfo&) override {
+    void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& info) override {
+        claimPedal(info);
         const NimBLEAttValue v = c->getValue();
         assembler.append(v.data(), v.length());
 
@@ -56,7 +47,7 @@ class WriteCallbacks : public NimBLECharacteristicCallbacks {
                     if (ctl.preset >= 0 && ctl.preset < 4)
                         push((uint8_t)ctl.preset, Tristate::Unknown, "preset");
                     else
-                        Serial.printf("[ble] preset %d out of range -- not Mode 1?\n",
+                        Serial.printf("[spark] preset %d out of range -- not Mode 1?\n",
                                       ctl.preset);
                     break;
 
@@ -76,28 +67,17 @@ class WriteCallbacks : public NimBLECharacteristicCallbacks {
         }
     }
 
-    void onSubscribe(NimBLECharacteristic*, NimBLEConnInfo&, uint16_t sub) override {
-        Serial.printf("[ble] pedal subscribed (value %u)\n", sub);
+    void onSubscribe(NimBLECharacteristic*, NimBLEConnInfo& info, uint16_t sub) override {
+        Serial.printf("[spark] pedal subscribed (value %u)\n", sub);
+        if (sub) claimPedal(info);
     }
 };
 
-static ServerCallbacks serverCallbacks;
 static WriteCallbacks writeCallbacks;
 
-bool begin() {
+bool attach(NimBLEServer* server) {
     queue = xQueueCreate(16, sizeof(SwitchEvent));
     if (!queue) return false;
-
-    if (!NimBLEDevice::init(SPARK_ADV_NAME)) return false;
-    // Spark frames are longer than the 23-byte default MTU allows in one write.
-    // The assembler would stitch fragments back together, but a large MTU means
-    // there are none to stitch.
-    NimBLEDevice::setMTU(255);
-
-    server = NimBLEDevice::createServer();
-    if (!server) return false;
-    server->setCallbacks(&serverCallbacks);
-    server->advertiseOnDisconnect(true);
 
     NimBLEService* svc = server->createService(NimBLEUUID(SPARK_SERVICE_UUID));
     if (!svc) return false;
@@ -105,6 +85,7 @@ bool begin() {
     NimBLECharacteristic* write = svc->createCharacteristic(
         NimBLEUUID(SPARK_WRITE_UUID),
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+    if (!write) return false;
     write->setCallbacks(&writeCallbacks);
 
     // Present but silent: the pedal subscribes to it and is content. Kept
@@ -112,26 +93,23 @@ bool begin() {
     NimBLECharacteristic* notify = svc->createCharacteristic(
         NimBLEUUID(SPARK_NOTIFY_UUID),
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+    if (!notify) return false;
     notify->setValue((uint8_t*)nullptr, 0);
     notify->setCallbacks(&writeCallbacks);  // for the subscribe log line
 
-    // No svc->start() here: in NimBLE 2.x services start with the server, which
-    // happens implicitly when advertising starts.
-
-    NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-    // NimBLE 2.x does not advertise the device name implicitly any more.
-    adv->setName(SPARK_ADV_NAME);
-    adv->addServiceUUID(NimBLEUUID(SPARK_SERVICE_UUID));
-    adv->enableScanResponse(true);
-    if (!adv->start()) return false;
-
-    Serial.printf("[ble] advertising as \"%s\", service %04X\n", SPARK_ADV_NAME,
-                  SPARK_SERVICE_UUID);
+    Serial.println("[spark] Spark service ready");
     return true;
 }
 
 bool pop(SwitchEvent& e) { return xQueueReceive(queue, &e, 0) == pdTRUE; }
 
-bool connected() { return linkUp; }
+bool connected() { return pedalHandle != BLE_HS_CONN_HANDLE_NONE; }
 
-}  // namespace ble
+void onPeerGone(uint16_t connHandle) {
+    if (connHandle != pedalHandle) return;
+    pedalHandle = BLE_HS_CONN_HANDLE_NONE;
+    assembler.reset();
+    Serial.println("[spark] pedal gone");
+}
+
+}  // namespace spark

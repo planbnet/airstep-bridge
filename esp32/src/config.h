@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 
 // Pin assignment, timing and the per-switch MIDI mapping. Everything a user is
@@ -16,6 +17,66 @@ static constexpr uint16_t SPARK_SERVICE_UUID = 0xFFC0;
 static constexpr uint16_t SPARK_WRITE_UUID = 0xFFC1;   // pedal -> "amp"
 static constexpr uint16_t SPARK_NOTIFY_UUID = 0xFFC2;  // "amp" -> pedal (unused)
 
+// ---------------------------------------------------------------- BLE-MIDI
+
+// Standard "MIDI over Bluetooth Low Energy" -- Apple's specification, adopted by
+// the MIDI Association and spoken natively by iOS, macOS, Android and Windows.
+//
+// With this on, the ESP32 is two BLE peripherals at once: the Spark amp the
+// AIRSTEP connects to, and an ordinary wireless MIDI interface for a tablet or
+// laptop. Sheet music apps (forScore, BandHelper, MobileSheets) send a Program
+// Change as you open a song, and it lands on the HX Stomp's MIDI IN -- so the
+// preset follows the setlist instead of being wired into LOOPER_PRESET below.
+//
+// The pedal keeps working untouched either way; set this to 0 to leave the
+// firmware exactly as it was.
+#define BLE_MIDI_ENABLED 1
+
+// Fixed by the specification. 128-bit, because the BLE MIDI profile has no
+// short UUID registered with the Bluetooth SIG -- which is what makes the
+// advertising payload tight enough to need the scan response (see ble_server).
+#define BLE_MIDI_SERVICE_UUID "03b80e5a-ede8-4b33-a751-6ce34ec4c700"
+#define BLE_MIDI_CHAR_UUID "7772e5db-3868-4112-a1a9-f2669d106bf3"
+
+// Which identity gets the primary advertisement, and which gets the scan
+// response. There is only room for one of them: a legacy advertisement holds 31
+// bytes, and flags (3) + the name "Spark 40 BLE" (14) + FFC0 (4) + the 128-bit
+// BLE-MIDI UUID (18) comes to 39.
+//
+// 1 -- BLE-MIDI UUID and FFC0 in the primary advertisement (3 + 18 + 4 = 25),
+//      the name in the scan response (14). CoreBluetooth filters its scan on
+//      the service UUID, and a MIDI host will not see a device whose MIDI UUID
+//      only appears in the scan response. The pedal still finds its amp by
+//      FFC0, which stays primary, but it must scan actively to read the name.
+//
+// 0 -- name and FFC0 in the primary advertisement (3 + 14 + 4 = 21), BLE-MIDI
+//      UUID in the scan response (18). The pedal then sees exactly the bytes it
+//      saw before any of this was added, at the cost of the MIDI host not
+//      finding the device at all on CoreBluetooth hosts.
+//
+// Set this to 0 if the pedal ever fails to connect; the MIDI half is the half
+// that can afford to lose.
+#define BLE_MIDI_UUID_IN_PRIMARY 1
+
+// Footswitch presses are also sent up to the MIDI host, not just out the DIN
+// port, so a switch can turn the page in a sheet music app while it still drives
+// the looper. Costs one notification per press.
+static constexpr bool MIRROR_PRESSES_TO_BLE_MIDI = true;
+
+// The pedal plus one MIDI host. NimBLE's CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+// defaults to 3, so two peers need no library configuration at all.
+static constexpr uint8_t BLE_MAX_PEERS = 2;
+
+// Apple's BLE-MIDI spec asks the accessory for a connection interval of 15 ms or
+// less, recommending a request for 11.25 ms with a fallback to 15 ms. Requesting
+// the range covers both: the host picks from it or keeps its own, and a rejected
+// request is not fatal -- a preset change does not care about a few ms. Units are
+// 1.25 ms for the intervals and 10 ms for the timeout.
+static constexpr uint16_t BLE_MIDI_ITVL_MIN = 9;    // 11.25 ms
+static constexpr uint16_t BLE_MIDI_ITVL_MAX = 12;   // 15 ms
+static constexpr uint16_t BLE_MIDI_LATENCY = 0;
+static constexpr uint16_t BLE_MIDI_TIMEOUT = 400;   // 4 s
+
 // ---------------------------------------------------------------- MIDI hardware
 
 // UART1 TX -> optocoupler MIDI board -> DIN-5 -> HX Stomp MIDI IN.
@@ -30,6 +91,12 @@ static constexpr int MIDI_TX_PIN = 10;
 // Standard MIDI rate. The H2 runs off a 32 MHz crystal and 32000000/31250 is
 // exactly 1024, so the UART divider is integral and there is no baud error.
 static constexpr uint32_t MIDI_BAUD = 31250;
+
+// Output ring buffer. Two sources feed the one UART -- footswitch presses and
+// whatever the MIDI host sends -- and BLE can deliver a burst faster than 31250
+// baud drains it. 512 bytes is about 160 ms of solid MIDI, far more than any
+// realistic burst, and costs nothing on a chip with 320 KB of RAM.
+static constexpr size_t MIDI_TX_BUFFER = 512;
 
 // Loopback self-test, for checking the MIDI byte stream without a MIDI board or
 // anything to plug into: jumper MIDI_TX_PIN to this pin and the firmware reads
